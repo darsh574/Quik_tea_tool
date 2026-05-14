@@ -11,6 +11,7 @@ import { defaultBolForm } from "@/lib/bolHelpers";
 import { poDigits } from "@/lib/formulas";
 import type {
   BrandKey,
+  TabKey,
   ShipmentState,
   LabelFormat,
   BolForm,
@@ -33,12 +34,14 @@ function defaultFormat(): LabelFormat {
 
 interface ShipmentStore {
   activeBrand: BrandKey;
+  activeTab: TabKey;
   brandState: Record<BrandKey, ShipmentState>;
   format: LabelFormat;
   bol: BolForm;
 
-  // ── brand / state selectors ──
+  // ── brand / tab / state selectors ──
   setActiveBrand: (brand: BrandKey) => void;
+  setActiveTab: (tab: TabKey) => void;
   current: () => ShipmentState;
 
   // ── Routing tab (Setup) ──
@@ -73,11 +76,13 @@ export const useShipmentStore = create<ShipmentStore>()(
   persist(
     (set, get) => ({
       activeBrand: "homegoods",
+      activeTab: "routing",
       brandState: makeDefaultBrandState(),
       format: defaultFormat(),
       bol: defaultBolForm(),
 
       setActiveBrand: (brand) => set({ activeBrand: brand }),
+      setActiveTab: (tab) => set({ activeTab: tab }),
 
       current: () => get().brandState[get().activeBrand],
 

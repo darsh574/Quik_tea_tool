@@ -1,6 +1,6 @@
-import { redirect } from "next/navigation";
+import DashboardTabs from "@/components/DashboardTabs";
 
-// The dashboard opens on the Routing tab — the first step of the flow.
-export default function DashboardIndex() {
-  redirect("/dashboard/routing");
+// The whole dashboard is one page — tabs switch client-side for instant nav.
+export default function DashboardPage() {
+  return <DashboardTabs />;
 }

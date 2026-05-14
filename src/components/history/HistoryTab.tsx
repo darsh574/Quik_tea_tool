@@ -1,17 +1,16 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
 import { searchPoRecords } from "@/lib/history";
 import { useShipmentStore } from "@/store/useShipmentStore";
 import { BRAND_CONFIG } from "@/lib/constants";
 import { generateLabelZip, downloadBlob } from "@/lib/labelPdf";
 import { buildBolPDF } from "@/lib/bolPdf";
-import type { PoRecord } from "@/lib/types";
+import type { PoRecord, TabKey } from "@/lib/types";
 
 export default function HistoryTab() {
-  const router = useRouter();
   const loadRecord = useShipmentStore((s) => s.loadRecord);
+  const setActiveTab = useShipmentStore((s) => s.setActiveTab);
 
   const [query, setQuery] = useState("");
   const [records, setRecords] = useState<PoRecord[]>([]);
@@ -37,9 +36,9 @@ export default function HistoryTab() {
     runSearch("");
   }, [runSearch]);
 
-  function loadIntoWorkspace(rec: PoRecord, goTo: string) {
+  function loadIntoWorkspace(rec: PoRecord, goTo: TabKey) {
     loadRecord(rec);
-    router.push(goTo);
+    setActiveTab(goTo);
   }
 
   async function downloadLabels(rec: PoRecord) {
@@ -141,8 +140,8 @@ export default function HistoryTab() {
                     onToggle={() => setOpenId(open ? null : id)}
                     onDownloadLabels={() => downloadLabels(rec)}
                     onDownloadBol={() => downloadBol(rec)}
-                    onEditBol={() => loadIntoWorkspace(rec, "/dashboard/bol")}
-                    onOpenRouting={() => loadIntoWorkspace(rec, "/dashboard/routing")}
+                    onEditBol={() => loadIntoWorkspace(rec, "bol")}
+                    onOpenRouting={() => loadIntoWorkspace(rec, "routing")}
                   />
                 );
               })}

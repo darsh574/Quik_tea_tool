@@ -5,6 +5,9 @@
 
 export type BrandKey = "homegoods" | "tjx" | "marshalls";
 
+/** The dashboard workflow tabs — switched client-side, no route navigation. */
+export type TabKey = "routing" | "labels" | "bol" | "amazon" | "history";
+
 /** A distribution center. `poPrefix` may be absent for manually-added DCs. */
 export interface DC {
   num: string;

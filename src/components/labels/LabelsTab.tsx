@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
 import { useShipmentStore } from "@/store/useShipmentStore";
 import { BRAND_CONFIG, SPEC } from "@/lib/constants";
 import { buildLabelElements } from "@/lib/formulas";
@@ -23,6 +22,7 @@ export default function LabelsTab() {
   const st = useShipmentStore((s) => s.brandState[s.activeBrand]);
   const format = useShipmentStore((s) => s.format);
   const setFormat = useShipmentStore((s) => s.setFormat);
+  const setActiveTab = useShipmentStore((s) => s.setActiveTab);
 
   const [progress, setProgress] = useState<{ pct: number; label: string } | null>(null);
   const [done, setDone] = useState(false);
@@ -204,9 +204,21 @@ export default function LabelsTab() {
         {done && (
           <div className="success-msg active">
             ✓ ZIP downloaded — check your Downloads folder. Next: head to the{" "}
-            <Link href="/dashboard/bol" style={{ color: "#1e7a4a", fontWeight: 700 }}>
+            <button
+              onClick={() => setActiveTab("bol")}
+              style={{
+                color: "#1e7a4a",
+                fontWeight: 700,
+                background: "none",
+                border: "none",
+                padding: 0,
+                cursor: "pointer",
+                textDecoration: "underline",
+                font: "inherit",
+              }}
+            >
               Bill of Lading
-            </Link>{" "}
+            </button>{" "}
             tab.
           </div>
         )}

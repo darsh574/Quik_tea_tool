@@ -1,19 +1,18 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useShipmentStore } from "@/store/useShipmentStore";
 import { BRAND_CONFIG } from "@/lib/constants";
-import type { BrandKey } from "@/lib/types";
+import type { BrandKey, TabKey } from "@/lib/types";
 import AssistantWidget from "@/components/AssistantWidget";
 
-const NAV = [
-  { href: "/dashboard/routing", label: "1 · Routing" },
-  { href: "/dashboard/labels", label: "2 · Label Generator" },
-  { href: "/dashboard/bol", label: "3 · Bill of Lading" },
-  { href: "/dashboard/amazon", label: "4 · Amazon API" },
-  { href: "/dashboard/history", label: "History" },
+const NAV: { tab: TabKey; label: string }[] = [
+  { tab: "routing", label: "1 · Routing" },
+  { tab: "labels", label: "2 · Label Generator" },
+  { tab: "bol", label: "3 · Bill of Lading" },
+  { tab: "amazon", label: "4 · Amazon API" },
+  { tab: "history", label: "History" },
 ];
 
 const BRANDS: BrandKey[] = ["homegoods", "tjx", "marshalls"];
@@ -25,10 +24,11 @@ export default function DashboardChrome({
   username: string;
   children: React.ReactNode;
 }) {
-  const pathname = usePathname();
   const router = useRouter();
   const activeBrand = useShipmentStore((s) => s.activeBrand);
   const setActiveBrand = useShipmentStore((s) => s.setActiveBrand);
+  const activeTab = useShipmentStore((s) => s.activeTab);
+  const setActiveTab = useShipmentStore((s) => s.setActiveTab);
 
   async function signOut() {
     const supabase = createClient();
@@ -143,11 +143,11 @@ export default function DashboardChrome({
             }}
           >
             {NAV.map((item) => {
-              const active = pathname === item.href || pathname.startsWith(item.href + "/");
+              const active = activeTab === item.tab;
               return (
-                <Link
-                  key={item.href}
-                  href={item.href}
+                <button
+                  key={item.tab}
+                  onClick={() => setActiveTab(item.tab)}
                   style={{
                     padding: "13px 20px",
                     fontSize: 12,
@@ -156,12 +156,17 @@ export default function DashboardChrome({
                     textTransform: "uppercase",
                     color: active ? "#fff" : "rgba(255,255,255,0.45)",
                     borderBottom: active ? "3px solid var(--orange)" : "3px solid transparent",
+                    borderTop: "none",
+                    borderLeft: "none",
+                    borderRight: "none",
                     marginBottom: "-2px",
-                    textDecoration: "none",
+                    background: "transparent",
+                    cursor: "pointer",
+                    fontFamily: "inherit",
                   }}
                 >
                   {item.label}
-                </Link>
+                </button>
               );
             })}
           </div>
