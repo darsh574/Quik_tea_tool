@@ -51,10 +51,18 @@ Always run `npm run typecheck` (and ideally `npm run build`) after changes.
 
 ## Architecture
 
+- **Single-page dashboard**: the whole app is one route, `/dashboard`. The four
+  workflow tabs + History are NOT separate routes — they are one client
+  component (`src/components/DashboardTabs.tsx`) that toggles tab visibility via
+  `display`. Switching tabs is pure client state (`activeTab` in the store) — no
+  navigation, no middleware round-trip, no chunk reload. This is deliberate:
+  separate routes caused a ~1s lag per tab switch. Do not reintroduce per-tab
+  routes. All tab components stay mounted, so scroll/form state is preserved.
 - **State**: a single Zustand store (`src/store/useShipmentStore.ts`) holds
-  per-brand shipment state + the label format + the BOL form, and is persisted
-  to `localStorage`. This is what carries a PO's data across the Routing, Labels
-  and BOL tabs.
+  `activeBrand`, `activeTab`, per-brand shipment state, the label format, and
+  the BOL form, persisted to `localStorage`. This is what carries a PO's data
+  across the Routing, Labels and BOL tabs, and what the nav buttons + History's
+  "Edit BOL" / "Open Routing" actions drive.
 - **Auth**: Supabase Auth. `src/middleware.ts` gates everything under
   `/dashboard` and redirects to `/login`. Server code uses
   `src/lib/supabase/server.ts`; client code uses `src/lib/supabase/client.ts`.
@@ -69,17 +77,22 @@ Always run `npm run typecheck` (and ideally `npm run build`) after changes.
 ### Layout
 
 ```
-src/app/dashboard/{routing,labels,bol,amazon,history}/page.tsx  → thin wrappers
-src/components/{routing,labels,bol,history,amazon}/             → the tab UIs
-src/components/{DashboardChrome,SummaryTable,AssistantWidget}.tsx
-src/lib/                                                       → ported logic + supabase + amazon
+src/app/dashboard/layout.tsx          → server: auth check + <DashboardChrome>
+src/app/dashboard/page.tsx            → renders <DashboardTabs /> (the only dashboard route)
+src/components/DashboardChrome.tsx    → header, brand tabs, nav buttons (set activeTab), sign-out
+src/components/DashboardTabs.tsx      → mounts all tab components, shows the active one
+src/components/{routing,labels,bol,history,amazon}/  → the tab UIs
+src/components/{SummaryTable,AssistantWidget}.tsx
+src/lib/                              → ported logic + supabase + amazon
 ```
 
-The `page.tsx` files are intentionally tiny — all UI lives in `src/components/`.
+`page.tsx` is intentionally tiny — all UI lives in `src/components/`. The nav
+tabs in `DashboardChrome` are `<button>`s that call `setActiveTab`, not links.
 
 ## Conventions
 
-- All tab UIs are `"use client"` components; the `page.tsx` wrappers are server
+- All tab UIs + `DashboardChrome` / `DashboardTabs` are `"use client"`
+  components; `dashboard/layout.tsx` and `dashboard/page.tsx` are server
   components.
 - PDF/Excel libs (`jspdf`, `jszip`, `xlsx`) run **client-side only**.
 - `xlsx` is in `serverComponentsExternalPackages` in `next.config.mjs`.
