@@ -5,6 +5,7 @@ import { useShipmentStore } from "@/store/useShipmentStore";
 import { BRAND_CONFIG, SPEC } from "@/lib/constants";
 import { buildLabelElements } from "@/lib/formulas";
 import { generateLabelZip, countLabelPdfs, downloadBlob } from "@/lib/labelPdf";
+import PoPicker from "@/components/PoPicker";
 import type { LabelFormat } from "@/lib/types";
 
 const FIELD_LABELS: { key: keyof LabelFormat; label: string; type?: "select" }[] = [
@@ -88,6 +89,8 @@ export default function LabelsTab() {
 
   return (
     <>
+      <PoPicker context="labels" />
+
       {/* ── LABEL FORMAT ── */}
       <div className="card first">
         <div className="section-title">Label Content</div>

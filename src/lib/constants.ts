@@ -69,13 +69,23 @@ export const BRAND_CONFIG: Record<BrandKey, BrandConfigEntry> = {
   homegoods: { dcMaster: DC_MASTER, pdfPrefix: "HG", defaultDCName: "HomeGoods Distribution Center", label: "HomeGoods" },
   tjx: { dcMaster: DC_MASTER_TJX, pdfPrefix: "TJX", defaultDCName: "T.J. Maxx Distribution Center", label: "T.J. Maxx" },
   marshalls: { dcMaster: DC_MASTER_MARSHALLS, pdfPrefix: "MAR", defaultDCName: "Marshalls Distribution Center", label: "Marshalls" },
+  // ── Brands awaiting DC master / routing rules (UI placeholders) ──
+  burlington: { dcMaster: {}, pdfPrefix: "BRL", defaultDCName: "Burlington Distribution Center", label: "Burlington" },
+  sierra: { dcMaster: {}, pdfPrefix: "SRA", defaultDCName: "Sierra Distribution Center", label: "Sierra" },
+  ddDiscount: { dcMaster: {}, pdfPrefix: "DDS", defaultDCName: "DD's Discounts Distribution Center", label: "DD's Discounts" },
 };
+
+/** Brands for which the routing logic is fully implemented. Others show a placeholder. */
+export const ROUTING_READY_BRANDS: ReadonlyArray<BrandKey> = ["homegoods", "tjx", "marshalls"];
 
 // BOL "Shipper Info" prefix differs slightly from the PDF-file prefix (TJM vs TJX).
 export const BOL_PREFIX: Record<BrandKey, string> = {
   homegoods: "HG",
   tjx: "TJM",
   marshalls: "MAR",
+  burlington: "BRL",
+  sierra: "SRA",
+  ddDiscount: "DDS",
 };
 
 // ── DEFAULT SKU METADATA (fallback when no file uploaded) ──
@@ -177,6 +187,9 @@ export function makeDefaultBrandState(): Record<BrandKey, ShipmentState> {
     },
     tjx: { products: [], dcs: [], qty: {}, qtyFinal: {}, qtyFinalTotal: {}, po: "", from: "Quikfoods Inc", skuMeta: {} },
     marshalls: { products: [], dcs: [], qty: {}, qtyFinal: {}, qtyFinalTotal: {}, po: "", from: "Quikfoods Inc", skuMeta: {} },
+    burlington: { products: [], dcs: [], qty: {}, qtyFinal: {}, qtyFinalTotal: {}, po: "", from: "Quikfoods Inc", skuMeta: {} },
+    sierra: { products: [], dcs: [], qty: {}, qtyFinal: {}, qtyFinalTotal: {}, po: "", from: "Quikfoods Inc", skuMeta: {} },
+    ddDiscount: { products: [], dcs: [], qty: {}, qtyFinal: {}, qtyFinalTotal: {}, po: "", from: "Quikfoods Inc", skuMeta: {} },
   };
 }
 

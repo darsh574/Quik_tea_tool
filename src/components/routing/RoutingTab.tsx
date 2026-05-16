@@ -4,11 +4,25 @@ import { useMemo, useRef, useState } from "react";
 import { useShipmentStore } from "@/store/useShipmentStore";
 import { parseShipmentSheet } from "@/lib/excel";
 import { computeSummary } from "@/lib/formulas";
-import { BRAND_CONFIG } from "@/lib/constants";
+import { BRAND_CONFIG, ROUTING_READY_BRANDS } from "@/lib/constants";
+import { savePoRecord } from "@/lib/history";
 import { SummaryTable } from "@/components/SummaryTable";
+import type { BrandKey } from "@/lib/types";
+
+// Tab order matches the dashboard reference: 3 new brands first, then the
+// fully-wired HG / TJX / Marshalls.
+const BRAND_TABS: BrandKey[] = [
+  "burlington",
+  "sierra",
+  "ddDiscount",
+  "homegoods",
+  "tjx",
+  "marshalls",
+];
 
 export default function RoutingTab() {
   const activeBrand = useShipmentStore((s) => s.activeBrand);
+  const setActiveBrand = useShipmentStore((s) => s.setActiveBrand);
   const st = useShipmentStore((s) => s.brandState[s.activeBrand]);
   const setPO = useShipmentStore((s) => s.setPO);
   const setFrom = useShipmentStore((s) => s.setFrom);
@@ -19,13 +33,46 @@ export default function RoutingTab() {
   const setQty = useShipmentStore((s) => s.setQty);
   const loadParsedSheet = useShipmentStore((s) => s.loadParsedSheet);
 
+  const format = useShipmentStore((s) => s.format);
+  const bol = useShipmentStore((s) => s.bol);
+  const bumpDataVersion = useShipmentStore((s) => s.bumpDataVersion);
+
   const fileRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
   const [status, setStatus] = useState<{ kind: "ok" | "err"; msg: string } | null>(null);
   const [newProduct, setNewProduct] = useState("");
   const [newDC, setNewDC] = useState({ num: "", code: "", name: "", street: "", city: "" });
+  const [submitting, setSubmitting] = useState(false);
+  const [submitMsg, setSubmitMsg] = useState<{ kind: "ok" | "err"; msg: string } | null>(null);
 
   const summary = useMemo(() => computeSummary(st), [st]);
+
+  async function handleSubmitRouting() {
+    setSubmitting(true);
+    setSubmitMsg(null);
+    try {
+      const rec = await savePoRecord({
+        brand: activeBrand,
+        shipmentState: st,
+        format,
+        bol,
+      });
+      bumpDataVersion();
+      setSubmitMsg({
+        kind: "ok",
+        msg: `✓ PO ${rec.po_number} saved to the PO list. It's now available in the Labels / BOL dropdowns.`,
+      });
+    } catch (err) {
+      setSubmitMsg({
+        kind: "err",
+        msg: "✗ " + (err instanceof Error ? err.message : "Could not save the PO."),
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const canSubmit = !!st.po && st.products.length > 0 && st.dcs.length > 0;
 
   async function handleFile(file: File | undefined) {
     if (!file) return;
@@ -71,8 +118,137 @@ export default function RoutingTab() {
     setNewDC({ num: "", code: "", name: "", street: "", city: "" });
   }
 
+  const isReady = ROUTING_READY_BRANDS.includes(activeBrand);
+
   return (
     <>
+      <style dangerouslySetInnerHTML={{ __html: `
+        .qt-brand-tabs {
+          display: flex;
+          gap: 6px;
+          padding: 6px;
+          background: #fff;
+          border: 1px solid var(--top-border, #e6e0d4);
+          border-radius: 12px;
+          margin-bottom: 14px;
+          overflow-x: auto;
+        }
+        .qt-brand-tab {
+          flex: 1;
+          min-width: 110px;
+          padding: 9px 14px;
+          background: transparent;
+          border: none;
+          border-radius: 8px;
+          font-family: inherit;
+          font-size: 12.5px;
+          font-weight: 600;
+          color: #5a6370;
+          cursor: pointer;
+          letter-spacing: 0.1px;
+          transition: background 0.16s ease, color 0.16s ease;
+          white-space: nowrap;
+        }
+        .qt-brand-tab:hover { background: #f6f3ec; color: #25303f; }
+        .qt-brand-tab.active {
+          background: #0e3a66;
+          color: #fff;
+          box-shadow: 0 2px 6px rgba(14,58,102,0.18);
+        }
+        .qt-brand-tab.pending { font-style: italic; opacity: 0.75; }
+        .qt-brand-tab.pending::after {
+          content: "soon";
+          font-size: 9px;
+          font-weight: 700;
+          background: #fdf2dc;
+          color: #a47712;
+          padding: 2px 6px;
+          border-radius: 999px;
+          margin-left: 6px;
+          letter-spacing: 0.4px;
+          text-transform: uppercase;
+          font-style: normal;
+        }
+        .qt-brand-tab.active.pending::after {
+          background: rgba(255,255,255,0.18);
+          color: #fff;
+        }
+        .qt-placeholder {
+          background: #fff;
+          border: 1px solid var(--top-border, #e6e0d4);
+          border-radius: 14px;
+          padding: 44px 36px;
+          text-align: center;
+        }
+        .qt-placeholder-icon {
+          width: 56px; height: 56px;
+          border-radius: 14px;
+          background: #fdf2dc;
+          color: #a47712;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          margin-bottom: 14px;
+        }
+        .qt-placeholder h3 {
+          font-family: Georgia, serif;
+          font-size: 19px;
+          font-weight: 700;
+          color: #25303f;
+          margin: 0 0 8px;
+        }
+        .qt-placeholder p {
+          font-size: 13px;
+          color: #6e6960;
+          line-height: 1.55;
+          max-width: 480px;
+          margin: 0 auto;
+        }
+      ` }} />
+
+      {/* ── BRAND TABS ── */}
+      <div className="qt-brand-tabs" role="tablist">
+        {BRAND_TABS.map((b) => {
+          const ready = ROUTING_READY_BRANDS.includes(b);
+          return (
+            <button
+              key={b}
+              role="tab"
+              aria-selected={activeBrand === b}
+              className={
+                "qt-brand-tab" +
+                (activeBrand === b ? " active" : "") +
+                (ready ? "" : " pending")
+              }
+              onClick={() => setActiveBrand(b)}
+            >
+              {BRAND_CONFIG[b].label}
+            </button>
+          );
+        })}
+      </div>
+
+      {!isReady && (
+        <div className="qt-placeholder">
+          <div className="qt-placeholder-icon">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="9" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+          </div>
+          <h3>{BRAND_CONFIG[activeBrand].label} routing — coming soon</h3>
+          <p>
+            DC list and quantity rules for <strong>{BRAND_CONFIG[activeBrand].label}</strong> haven&apos;t
+            been wired up yet. Switch to <strong>HomeGoods</strong>, <strong>T.J. Maxx</strong>, or{" "}
+            <strong>Marshalls</strong> above to use the existing routing flow, or share the DC master
+            and we&apos;ll add this brand next.
+          </p>
+        </div>
+      )}
+
+      {isReady && (
+      <>
       {/* ── UPLOAD ── */}
       <div className="card first">
         <div className="section-title">Import from Excel / CSV</div>
@@ -289,7 +465,7 @@ export default function RoutingTab() {
       </div>
 
       {/* ── SHIPMENT SUMMARY ── */}
-      <div className="card last">
+      <div className="card">
         <div className="section-title">Shipment Summary</div>
         <div className="table-wrap">
           {summary ? (
@@ -301,6 +477,46 @@ export default function RoutingTab() {
           )}
         </div>
       </div>
+
+      {/* ── SUBMIT — save the routing snapshot into the PO list ── */}
+      <div className="card last">
+        <div className="section-title">Submit Routing</div>
+        <p className="hint" style={{ marginBottom: 14 }}>
+          Save this PO into the shared <strong>PO list</strong>. Once submitted, it&apos;ll show up
+          in the <strong>Label Generator</strong> and <strong>Bill of Lading</strong> tabs&apos;
+          PO dropdowns so anyone on the team can pick it up.
+        </p>
+        <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+          <button
+            className="btn-generate"
+            onClick={handleSubmitRouting}
+            disabled={submitting || !canSubmit}
+            title={
+              canSubmit
+                ? "Save this PO to the shared list"
+                : "Set a PO, add at least one product and one DC first"
+            }
+          >
+            {submitting ? "Submitting…" : "✓ Submit & Save to PO List"}
+          </button>
+          {!canSubmit && (
+            <span style={{ fontSize: 12, color: "#a47712" }}>
+              {!st.po
+                ? "Set a PO number above."
+                : st.products.length === 0
+                ? "Add at least one product."
+                : "Add at least one DC."}
+            </span>
+          )}
+        </div>
+        {submitMsg && (
+          <div className={"upload-status " + submitMsg.kind} style={{ marginTop: 12 }}>
+            {submitMsg.msg}
+          </div>
+        )}
+      </div>
+      </>
+      )}
     </>
   );
 }

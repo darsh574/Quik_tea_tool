@@ -25,8 +25,12 @@ export interface SaveInput {
 export async function savePoRecord({ brand, shipmentState, format, bol }: SaveInput): Promise<PoRecord> {
   const supabase = createClient();
 
-  // Prefer the explicit BOL Shipment PO #, fall back to the routing PO.
-  const poNumber = (bol.bol_po_number || shipmentState.po || "").trim();
+  // Prefer the Routing PO (source of truth). Fall back to the BOL Shipment PO #
+  // only if Routing's PO is empty — important so that editing the PO on the
+  // Routing tab doesn't get shadowed by a stale bol_po_number from an earlier
+  // sheet upload, which would cause the (po_number, brand) upsert to overwrite
+  // the wrong row.
+  const poNumber = (shipmentState.po || bol.bol_po_number || "").trim();
   if (!poNumber) {
     throw new Error("No PO number set — fill the PO on the Routing tab or the BOL Shipment PO #.");
   }
@@ -46,6 +50,11 @@ export async function savePoRecord({ brand, shipmentState, format, bol }: SaveIn
     data: { user },
   } = await supabase.auth.getUser();
 
+  const username =
+    (user?.user_metadata?.username as string | undefined) ||
+    user?.email?.split("@")[0] ||
+    null;
+
   const row = {
     po_number: poNumber,
     po_digits: poDigits(poNumber),
@@ -58,6 +67,7 @@ export async function savePoRecord({ brand, shipmentState, format, bol }: SaveIn
     total_pallets: summary ? Math.round(summary.tot.pallets) : 0,
     bol_number: bol.bol_number || null,
     created_by: user?.id ?? null,
+    created_by_username: username,
   };
 
   const { data, error } = await supabase
@@ -96,4 +106,11 @@ export async function getPoRecord(id: string): Promise<PoRecord | null> {
   const { data, error } = await supabase.from("po_records").select("*").eq("id", id).maybeSingle();
   if (error) throw new Error(error.message);
   return (data as PoRecord) ?? null;
+}
+
+/** Delete a single PO record by id. */
+export async function deletePoRecord(id: string): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase.from("po_records").delete().eq("id", id);
+  if (error) throw new Error(error.message);
 }

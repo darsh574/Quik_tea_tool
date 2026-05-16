@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import DashboardChrome from "@/components/DashboardChrome";
+import { UserProvider, type CurrentUser } from "@/components/UserContext";
+import { readPermissions, readRole } from "@/lib/auth/permissions";
 
 export default async function DashboardLayout({
   children,
@@ -20,5 +22,19 @@ export default async function DashboardLayout({
     user.email?.split("@")[0] ||
     "user";
 
-  return <DashboardChrome username={username}>{children}</DashboardChrome>;
+  const role = readRole(user.user_metadata?.role);
+  const permissions = readPermissions(role, user.user_metadata?.permissions);
+
+  const currentUser: CurrentUser = {
+    id: user.id,
+    username,
+    role,
+    permissions,
+  };
+
+  return (
+    <UserProvider value={currentUser}>
+      <DashboardChrome username={username}>{children}</DashboardChrome>
+    </UserProvider>
+  );
 }

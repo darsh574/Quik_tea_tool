@@ -38,6 +38,13 @@ interface ShipmentStore {
   brandState: Record<BrandKey, ShipmentState>;
   format: LabelFormat;
   bol: BolForm;
+  /**
+   * Incremented after every Supabase write (save / delete). Components that
+   * fetch PO records watch this in their useEffect deps so the list refreshes
+   * automatically without manual re-fetching.
+   */
+  dataVersion: number;
+  bumpDataVersion: () => void;
 
   // ── brand / tab / state selectors ──
   setActiveBrand: (brand: BrandKey) => void;
@@ -76,10 +83,12 @@ export const useShipmentStore = create<ShipmentStore>()(
   persist(
     (set, get) => ({
       activeBrand: "homegoods",
-      activeTab: "routing",
+      activeTab: "home",
       brandState: makeDefaultBrandState(),
       format: defaultFormat(),
       bol: defaultBolForm(),
+      dataVersion: 0,
+      bumpDataVersion: () => set((s) => ({ dataVersion: s.dataVersion + 1 })),
 
       setActiveBrand: (brand) => set({ activeBrand: brand }),
       setActiveTab: (tab) => set({ activeTab: tab }),
@@ -90,11 +99,12 @@ export const useShipmentStore = create<ShipmentStore>()(
         set((s) => {
           const brand = s.activeBrand;
           const next = { ...s.brandState, [brand]: { ...s.brandState[brand], po } };
-          // Mirror the trailing PO digits into the BOL "Shipment PO #" field
-          // only when it is still empty (matches loadStateToForm()).
+          // Always keep the BOL "Shipment PO #" in sync with the routing PO.
+          // Without this, a stale bol_po_number from an earlier sheet upload
+          // would shadow the new PO at save time and Supabase's upsert
+          // (po_number, brand) would overwrite the wrong row.
           const digits = poDigits(po);
-          const bol =
-            !s.bol.bol_po_number && digits ? { ...s.bol, bol_po_number: digits } : s.bol;
+          const bol = { ...s.bol, bol_po_number: digits };
           return { brandState: next, bol };
         }),
 
@@ -217,7 +227,22 @@ export const useShipmentStore = create<ShipmentStore>()(
     {
       name: "quikt-shipment-store",
       // Persist everything so a refresh keeps the in-progress shipment.
-      version: 1,
+      version: 2,
+      // v1 → v2: extended BrandKey with burlington / sierra / ddDiscount.
+      // Persisted state from v1 is missing those keys, so merge in the defaults
+      // to keep brandState[brand] safe for the new brands.
+      migrate: (persisted, version) => {
+        if (!persisted) return persisted;
+        const p = persisted as Partial<ShipmentStore>;
+        if (version < 2) {
+          const defaults = makeDefaultBrandState();
+          p.brandState = { ...defaults, ...(p.brandState ?? {}) } as Record<
+            BrandKey,
+            ShipmentState
+          >;
+        }
+        return p;
+      },
     }
   )
 );

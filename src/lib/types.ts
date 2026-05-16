@@ -3,10 +3,82 @@
 // Shapes mirror the original platform_updt.html state exactly.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type BrandKey = "homegoods" | "tjx" | "marshalls";
+export type BrandKey =
+  | "homegoods"
+  | "tjx"
+  | "marshalls"
+  | "burlington"
+  | "sierra"
+  | "ddDiscount";
 
 /** The dashboard workflow tabs — switched client-side, no route navigation. */
-export type TabKey = "routing" | "labels" | "bol" | "amazon" | "history";
+export type TabKey =
+  | "home"
+  | "routing"
+  | "labels"
+  | "bol"
+  | "amazon"
+  | "history"
+  | "sku-master"
+  | "settings";
+
+/**
+ * A single row in the central SKU catalogue (sku_master table).
+ * Mirrors the columns of the "SKU MASTER.xlsx" workbook used by the team.
+ */
+export interface SkuMasterRow {
+  id?: string;
+
+  // Item identity
+  item_code: string;
+  item_description?: string | null;
+  group_name?: string | null;
+  sub_group?: string | null;
+  case_pack?: number | null;
+
+  // Unit net weight
+  unit_net_wt_g?: number | null;
+  unit_net_wt_oz?: number | null;
+  unit_net_wt_lb?: number | null;
+
+  // Carton net weight
+  carton_net_wt_kg?: number | null;
+  carton_net_wt_lb?: number | null;
+
+  // UPC codes (text, preserves leading zeros)
+  gtin_upc_case_code?: string | null;
+  unit_upc_code?: string | null;
+
+  shelf_life_months?: number | null;
+
+  // Unit dimensions
+  unit_height_in?: number | null;
+  unit_length_in?: number | null;
+  unit_width_in?: number | null;
+  unit_gross_wt_g?: number | null;
+  unit_gross_wt_oz?: number | null;
+
+  // Case
+  case_cube_cuft?: number | null;
+  case_height_in?: number | null;
+  case_length_in?: number | null;
+  case_width_in?: number | null;
+  case_gross_wt_lb?: number | null;
+  case_gross_wt_kg?: number | null;
+
+  // Pallet
+  pallet_length_in?: number | null;
+  pallet_width_in?: number | null;
+  pallet_height_in?: number | null;
+  pallet_ti?: number | null;
+  pallet_hi?: number | null;
+  pallet_cases_per_pallet?: number | null;
+
+  created_at?: string;
+  updated_at?: string;
+  created_by?: string | null;
+  created_by_username?: string | null;
+}
 
 /** A distribution center. `poPrefix` may be absent for manually-added DCs. */
 export interface DC {
@@ -166,4 +238,5 @@ export interface PoRecord {
   created_at?: string;
   updated_at?: string;
   created_by?: string | null;
+  created_by_username?: string | null;
 }

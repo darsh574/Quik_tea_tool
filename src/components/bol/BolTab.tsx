@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useShipmentStore } from "@/store/useShipmentStore";
 import { computeSummary } from "@/lib/formulas";
 import { CARRIER_BOOK } from "@/lib/constants";
@@ -8,6 +8,7 @@ import { buildBolPDF } from "@/lib/bolPdf";
 import { syncBolFromSummary, updateShipperInfoPO } from "@/lib/bolHelpers";
 import { savePoRecord } from "@/lib/history";
 import { OrdersTable } from "@/components/bol/OrdersTable";
+import PoPicker from "@/components/PoPicker";
 import type { BolForm } from "@/lib/types";
 
 export default function BolTab() {
@@ -17,11 +18,52 @@ export default function BolTab() {
   const bol = useShipmentStore((s) => s.bol);
   const setBol = useShipmentStore((s) => s.setBol);
   const setBolOrders = useShipmentStore((s) => s.setBolOrders);
+  const bumpDataVersion = useShipmentStore((s) => s.bumpDataVersion);
 
   const [mode, setMode] = useState<"editable" | "static">("editable");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  // ── Auto-save state ──
+  // The user explicitly enables auto-save by clicking "Sync from Summary".
+  // After that, edits to the BOL form are persisted to Supabase with a 1.5s
+  // debounce so we don't hammer the database on every keystroke.
+  const [autoSaveOn, setAutoSaveOn] = useState(false);
+  const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "saving" | "saved" | "error">(
+    "idle",
+  );
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+  const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Skip auto-save on the very first render after enabling (Sync already wrote)
+  const skipNextAutoSave = useRef(false);
+
+  useEffect(() => {
+    if (!autoSaveOn) return;
+    if (skipNextAutoSave.current) {
+      skipNextAutoSave.current = false;
+      return;
+    }
+    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+    setAutoSaveStatus("saving");
+    autoSaveTimer.current = setTimeout(async () => {
+      try {
+        await savePoRecord({ brand: activeBrand, shipmentState: st, format, bol });
+        setLastSavedAt(new Date());
+        setAutoSaveStatus("saved");
+        bumpDataVersion();
+      } catch {
+        // Silent for auto-save — the badge flips to "error" but we don't
+        // interrupt the user. They can still hit Save / Generate manually.
+        setAutoSaveStatus("error");
+      }
+    }, 1500);
+    return () => {
+      if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bol, autoSaveOn]);
 
   // bound text input bound to a BolForm key
   function B({ k, ...rest }: { k: keyof BolForm } & React.InputHTMLAttributes<HTMLInputElement>) {
@@ -55,7 +97,7 @@ export default function BolTab() {
     });
   }
 
-  function handleSync() {
+  async function handleSync() {
     const summary = computeSummary(st);
     if (!summary) {
       flashToast("Add products and DCs on the Routing tab first.");
@@ -63,7 +105,44 @@ export default function BolTab() {
     }
     const patch = syncBolFromSummary(summary, activeBrand, bol.bol_po_number);
     setBol(patch);
-    flashToast("Synced Handling QTY, Commodity & Customer Orders from the Shipment Summary.");
+    // Persist the synced state immediately, then enable auto-save for future edits.
+    skipNextAutoSave.current = true;
+    setAutoSaveOn(true);
+    setAutoSaveStatus("saving");
+    try {
+      await savePoRecord({
+        brand: activeBrand,
+        shipmentState: st,
+        format,
+        bol: { ...bol, ...patch },
+      });
+      setLastSavedAt(new Date());
+      setAutoSaveStatus("saved");
+      bumpDataVersion();
+      flashToast("Synced from Summary · auto-save is now ON.");
+    } catch (err) {
+      setAutoSaveStatus("error");
+      flashToast(
+        "Synced — but save failed: " +
+          (err instanceof Error ? err.message : "unknown error") +
+          ". Auto-save still on; will retry on next edit.",
+      );
+    }
+  }
+
+  async function handleSubmit() {
+    setSubmitting(true);
+    try {
+      const rec = await savePoRecord({ brand: activeBrand, shipmentState: st, format, bol });
+      setLastSavedAt(new Date());
+      setAutoSaveStatus("saved");
+      bumpDataVersion();
+      flashToast(`✓ Saved BOL for PO ${rec.po_number}.`);
+    } catch (err) {
+      flashToast("Save failed: " + (err instanceof Error ? err.message : "unknown error"));
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   function handlePreview() {
@@ -80,6 +159,7 @@ export default function BolTab() {
       // Save the full shipment snapshot to history, keyed by PO.
       try {
         await savePoRecord({ brand: activeBrand, shipmentState: st, format, bol });
+        bumpDataVersion();
         flashToast("BOL generated and shipment saved to history.");
       } catch (err) {
         flashToast(
@@ -94,10 +174,15 @@ export default function BolTab() {
 
   return (
     <div className="bol-panel">
+      <PoPicker context="bol" />
+
       {/* ── Action bar ── */}
       <div className="card first">
         <div className="bol-action-bar">
-          <div className="bol-title">Bill of Lading Generator — TJX Shipment Documents</div>
+          <div>
+            <div className="bol-title">Bill of Lading Generator — TJX Shipment Documents</div>
+            <AutoSaveBadge state={autoSaveStatus} on={autoSaveOn} lastSavedAt={lastSavedAt} />
+          </div>
           <div className="bol-buttons">
             <div className="bol-mode-toggle">
               <button
@@ -113,11 +198,19 @@ export default function BolTab() {
                 Non-Editable PDF
               </button>
             </div>
-            <button className="bol-preview-btn" onClick={handleSync} title="Re-populate from the Shipment Summary">
+            <button className="bol-preview-btn" onClick={handleSync} title="Re-populate from the Shipment Summary and enable auto-save">
               ↺ Sync from Summary
             </button>
             <button className="bol-preview-btn" onClick={handlePreview}>
               Preview
+            </button>
+            <button
+              className="bol-preview-btn"
+              onClick={handleSubmit}
+              disabled={submitting}
+              title="Save the BOL to the PO list without generating the PDF"
+            >
+              {submitting ? "Saving…" : "💾 Submit"}
             </button>
             <button className="bol-generate-btn" onClick={handleGenerate} disabled={saving}>
               {saving ? "Saving…" : "Generate PDF & Save"}
@@ -458,6 +551,110 @@ export default function BolTab() {
       </div>
 
       {toast && <div className="toast show">{toast}</div>}
+    </div>
+  );
+}
+
+function AutoSaveBadge({
+  state,
+  on,
+  lastSavedAt,
+}: {
+  state: "idle" | "saving" | "saved" | "error";
+  on: boolean;
+  lastSavedAt: Date | null;
+}) {
+  if (!on) {
+    return (
+      <div
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          marginTop: 4,
+          fontSize: 11,
+          color: "#888",
+          letterSpacing: 0.2,
+        }}
+      >
+        <span
+          style={{
+            width: 6,
+            height: 6,
+            borderRadius: 999,
+            background: "#cfcabf",
+            display: "inline-block",
+          }}
+        />
+        Auto-save off — click <strong style={{ marginLeft: 3 }}>Sync from Summary</strong> to enable
+      </div>
+    );
+  }
+
+  const color =
+    state === "saved"
+      ? "#1e7a4a"
+      : state === "saving"
+      ? "#a47712"
+      : state === "error"
+      ? "#c94628"
+      : "#5a6370";
+  const bg =
+    state === "saved"
+      ? "#e8f6ee"
+      : state === "saving"
+      ? "#fdf2dc"
+      : state === "error"
+      ? "#fdece6"
+      : "#f0ede6";
+  const label =
+    state === "saving"
+      ? "Saving…"
+      : state === "saved"
+      ? lastSavedAt
+        ? `Auto-saved · ${lastSavedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+        : "Auto-saved"
+      : state === "error"
+      ? "Auto-save error · will retry"
+      : "Auto-save on";
+
+  return (
+    <div
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        marginTop: 4,
+        fontSize: 11,
+        fontWeight: 600,
+        letterSpacing: 0.3,
+        color,
+        background: bg,
+        padding: "3px 10px",
+        borderRadius: 999,
+      }}
+    >
+      <span
+        style={{
+          width: 6,
+          height: 6,
+          borderRadius: 999,
+          background: color,
+          display: "inline-block",
+          animation: state === "saving" ? "qt-pulse-dot 1s ease-in-out infinite" : "none",
+        }}
+      />
+      {label}
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
+            @keyframes qt-pulse-dot {
+              0%, 100% { opacity: 1; transform: scale(1); }
+              50% { opacity: 0.4; transform: scale(0.7); }
+            }
+          `,
+        }}
+      />
     </div>
   );
 }
