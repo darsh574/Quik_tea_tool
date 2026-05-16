@@ -103,7 +103,7 @@ export async function upsertSkuMaster(input: SkuMasterInput): Promise<SkuMasterR
 /** Bulk insert / update for the Excel import flow. */
 export async function bulkUpsertSkuMaster(
   inputs: SkuMasterInput[],
-): Promise<{ saved: number; skipped: number }> {
+): Promise<{ saved: number; skipped: number; dedupedDuplicates: number; duplicateCodes: string[] }> {
   const supabase = createClient();
   const {
     data: { user },
@@ -123,13 +123,35 @@ export async function bulkUpsertSkuMaster(
     }));
 
   const skipped = inputs.length - cleaned.length;
-  if (cleaned.length === 0) return { saved: 0, skipped };
+  if (cleaned.length === 0) {
+    return { saved: 0, skipped, dedupedDuplicates: 0, duplicateCodes: [] };
+  }
+
+  // Deduplicate within the batch: Postgres ON CONFLICT can't update the same
+  // target row twice in one statement. Keep the LAST occurrence of each
+  // item_code (so a "fix later in the sheet" wins over an earlier row).
+  const seenCounts = new Map<string, number>();
+  const dedupMap = new Map<string, (typeof cleaned)[number]>();
+  for (const r of cleaned) {
+    seenCounts.set(r.item_code, (seenCounts.get(r.item_code) ?? 0) + 1);
+    dedupMap.set(r.item_code, r);
+  }
+  const deduped = Array.from(dedupMap.values());
+  const dedupedDuplicates = cleaned.length - deduped.length;
+  const duplicateCodes = Array.from(seenCounts.entries())
+    .filter(([, n]) => n > 1)
+    .map(([code]) => code);
 
   const { error } = await supabase
     .from("sku_master")
-    .upsert(cleaned, { onConflict: "item_code" });
+    .upsert(deduped, { onConflict: "item_code" });
   if (error) throw new Error(error.message);
-  return { saved: cleaned.length, skipped };
+  return {
+    saved: deduped.length,
+    skipped,
+    dedupedDuplicates,
+    duplicateCodes,
+  };
 }
 
 /** Delete one SKU by id. */

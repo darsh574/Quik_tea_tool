@@ -233,7 +233,15 @@ export default function SkuMasterTab() {
     setImporting(true);
     try {
       const res = await bulkUpsertSkuMaster(valid);
-      flash("ok", `✓ Imported ${res.saved} SKU${res.saved === 1 ? "" : "s"}.`);
+      let text = `✓ Imported ${res.saved} SKU${res.saved === 1 ? "" : "s"}.`;
+      if (res.dedupedDuplicates > 0) {
+        const codes = res.duplicateCodes.slice(0, 5).join(", ");
+        const more = res.duplicateCodes.length > 5 ? ` …+${res.duplicateCodes.length - 5} more` : "";
+        text += ` (${res.dedupedDuplicates} duplicate row${
+          res.dedupedDuplicates === 1 ? "" : "s"
+        } collapsed; kept last for: ${codes}${more})`;
+      }
+      flash("ok", text);
       setPreviewing(null);
       await load();
     } catch (e) {
