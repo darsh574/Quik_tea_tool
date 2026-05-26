@@ -736,17 +736,22 @@ export default function SimplePoRouting({ brand }: { brand: BrandKey }) {
                   <tr key={line._id}>
                     <td style={{ color: "#888", fontWeight: 600 }}>{idx + 1}</td>
 
+                    {/* The derived/mirrored columns stay blank until the row
+                        has a product entered — they otherwise repeat the
+                        header values across every empty default row. */}
                     {/* PO No. = Master + Suffix — read-only, auto-derived */}
                     <td
                       className={
-                        poNumber || effectiveSuffix(line) ? "derived po-cell" : "derived-mute"
+                        productEntered && (poNumber || effectiveSuffix(line))
+                          ? "derived po-cell"
+                          : "derived-mute"
                       }
                     >
-                      {effectivePo(line) || "—"}
+                      {productEntered ? effectivePo(line) || "—" : "—"}
                     </td>
                     {/* Master PO = the header PO, mirrored on every row */}
-                    <td className={poNumber ? "derived" : "derived-mute"}>
-                      {poNumber || "—"}
+                    <td className={productEntered && poNumber ? "derived" : "derived-mute"}>
+                      {productEntered ? poNumber || "—" : "—"}
                     </td>
                     {/* Suffix is editable — typically the DC number */}
                     <td className={effectiveSuffix(line) ? "manual" : "manual-empty"}>
@@ -759,11 +764,11 @@ export default function SimplePoRouting({ brand }: { brand: BrandKey }) {
                         title="Editable — typically the DC number. PO No. = Master PO + Suffix."
                       />
                     </td>
-                    <td className={startDate ? "derived" : "derived-mute"}>
-                      {formatDate(startDate) || "—"}
+                    <td className={productEntered && startDate ? "derived" : "derived-mute"}>
+                      {productEntered ? formatDate(startDate) || "—" : "—"}
                     </td>
-                    <td className={endDate ? "derived" : "derived-mute"}>
-                      {formatDate(endDate) || "—"}
+                    <td className={productEntered && endDate ? "derived" : "derived-mute"}>
+                      {productEntered ? formatDate(endDate) || "—" : "—"}
                     </td>
 
                     <td className={productEntered ? "manual" : "manual-empty"}>
