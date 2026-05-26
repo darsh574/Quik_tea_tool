@@ -116,6 +116,12 @@ export interface ShipmentState {
    * so no SQL schema change is required.
    */
   burlington?: BurlingtonShipment;
+  /**
+   * Optional Sierra Trading Post payload — populated only for the Sierra
+   * brand. Mirrors the customer's `siara routing.xlsx` worksheet
+   * (Original units / Final cases per DC + cubic-feet totals).
+   */
+  sierra?: SierraShipment;
 }
 
 /** One line in the Burlington / DD Discount routing table. */
@@ -157,6 +163,35 @@ export interface BurlingtonShipment {
   endDate: string;
   lines: BurlingtonLine[];
   palletConstants: BurlingtonPalletConstants;
+}
+
+/** A Sierra Trading Post distribution center (num + code + state). */
+export interface SierraDc {
+  num: string;   // e.g. "0810"
+  code: string;  // e.g. "CHE"
+  state: string; // e.g. "WY"
+}
+
+/** One product row in the Sierra routing matrix. */
+export interface SierraLine {
+  _id: string;
+  product: string;
+  /** Original units per DC, keyed by dc.num. `""` means blank/unentered. */
+  orig: Record<string, number | "">;
+  /** Final cases per DC, keyed by dc.num. `""` means blank/unentered. */
+  final: Record<string, number | "">;
+}
+
+/**
+ * Sierra Trading Post routing — mirrors the structure in
+ * `siara routing.xlsx` exactly:
+ *   per-product Original (units) per DC, Final (cases) per DC, and
+ *   per-DC cubic-feet totals derived from the SKU Master's case_cube_cuft.
+ */
+export interface SierraShipment {
+  poNumber: string;
+  dcs: SierraDc[];
+  lines: SierraLine[];
 }
 
 /** Label Format tab fields. */

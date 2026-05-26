@@ -11,7 +11,35 @@ import type {
   BolOrder,
   BurlingtonShipment,
   BurlingtonLine,
+  SierraDc,
+  SierraLine,
+  SierraShipment,
 } from "./types";
+
+/** Sierra Trading Post default DCs — from the customer's `siara routing.xlsx`. */
+export const SIERRA_DCS: SierraDc[] = [
+  { num: "0810", code: "CHE", state: "WY" },
+  { num: "0860", code: "ASH", state: "OH" },
+];
+
+/** Fresh blank Sierra line — empty per-DC orig/final maps populated by the
+ *  component on first render. */
+export function newSierraLine(): SierraLine {
+  return {
+    _id: Math.random().toString(36).slice(2),
+    product: "",
+    orig: {},
+    final: {},
+  };
+}
+
+export function defaultSierraShipment(): SierraShipment {
+  return {
+    poNumber: "",
+    dcs: SIERRA_DCS.map((d) => ({ ...d })),
+    lines: Array.from({ length: 7 }, newSierraLine),
+  };
+}
 
 /** Fresh blank line item for the Burlington / DD Discount routing table. */
 export function newBurlingtonLine(): BurlingtonLine {
@@ -222,7 +250,7 @@ export function makeDefaultBrandState(): Record<BrandKey, ShipmentState> {
     tjx: { products: [], dcs: [], qty: {}, qtyFinal: {}, qtyFinalTotal: {}, po: "", from: "Quikfoods Inc", skuMeta: {} },
     marshalls: { products: [], dcs: [], qty: {}, qtyFinal: {}, qtyFinalTotal: {}, po: "", from: "Quikfoods Inc", skuMeta: {} },
     burlington: { products: [], dcs: [], qty: {}, qtyFinal: {}, qtyFinalTotal: {}, po: "", from: "Quikfoods Inc", skuMeta: {}, burlington: defaultBurlingtonShipment() },
-    sierra: { products: [], dcs: [], qty: {}, qtyFinal: {}, qtyFinalTotal: {}, po: "", from: "Quikfoods Inc", skuMeta: {} },
+    sierra: { products: [], dcs: [], qty: {}, qtyFinal: {}, qtyFinalTotal: {}, po: "", from: "Quikfoods Inc", skuMeta: {}, sierra: defaultSierraShipment() },
     ddDiscount: { products: [], dcs: [], qty: {}, qtyFinal: {}, qtyFinalTotal: {}, po: "", from: "Quikfoods Inc", skuMeta: {}, burlington: defaultBurlingtonShipment() },
   };
 }

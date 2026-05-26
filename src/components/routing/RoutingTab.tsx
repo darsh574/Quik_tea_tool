@@ -8,10 +8,13 @@ import { BRAND_CONFIG, ROUTING_READY_BRANDS } from "@/lib/constants";
 import { savePoRecord } from "@/lib/history";
 import { SummaryTable } from "@/components/SummaryTable";
 import SimplePoRouting from "@/components/routing/SimplePoRouting";
+import SierraRouting from "@/components/routing/SierraRouting";
 import type { BrandKey } from "@/lib/types";
 
 /** Brands that use the new line-item / Burlington-style routing format. */
 const SIMPLE_PO_BRANDS: BrandKey[] = ["burlington", "ddDiscount"];
+/** Brands that use the Sierra-style products-per-DC matrix. */
+const SIERRA_BRANDS: BrandKey[] = ["sierra"];
 
 // Tab order matches the dashboard reference: 3 new brands first, then the
 // fully-wired HG / TJX / Marshalls.
@@ -124,6 +127,7 @@ export default function RoutingTab() {
 
   const isReady = ROUTING_READY_BRANDS.includes(activeBrand);
   const isSimplePo = SIMPLE_PO_BRANDS.includes(activeBrand);
+  const isSierra = SIERRA_BRANDS.includes(activeBrand);
 
   return (
     <>
@@ -236,7 +240,10 @@ export default function RoutingTab() {
       {/* Burlington / DD Discount — line-item PO table with SKU Master lookups */}
       {isSimplePo && <SimplePoRouting brand={activeBrand} />}
 
-      {!isReady && !isSimplePo && (
+      {/* Sierra — products × DC matrix with cubic-feet calculations */}
+      {isSierra && <SierraRouting brand={activeBrand} />}
+
+      {!isReady && !isSimplePo && !isSierra && (
         <div className="qt-placeholder">
           <div className="qt-placeholder-icon">
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">

@@ -10,6 +10,7 @@ import {
   makeDefaultBrandState,
   BRAND_CONFIG,
   defaultBurlingtonShipment,
+  defaultSierraShipment,
 } from "@/lib/constants";
 import { defaultBolForm } from "@/lib/bolHelpers";
 import { defaultLabelFormat } from "@/lib/labelFormat";
@@ -24,6 +25,7 @@ import type {
   DC,
   PoRecord,
   BurlingtonShipment,
+  SierraShipment,
 } from "@/lib/types";
 
 // `defaultLabelFormat` lives in `@/lib/labelFormat` so both the store and
@@ -79,6 +81,9 @@ interface ShipmentStore {
 
   // ── Burlington / DD Discount routing ──
   setBurlington: (patch: Partial<BurlingtonShipment>) => void;
+
+  // ── Sierra routing ──
+  setSierra: (patch: Partial<SierraShipment>) => void;
 
   // ── BOL tab ──
   setBol: (patch: Partial<BolForm>) => void;
@@ -236,6 +241,18 @@ export const useShipmentStore = create<ShipmentStore>()(
           };
         }),
 
+      setSierra: (patch) =>
+        set((s) => {
+          const st = s.brandState[s.activeBrand];
+          const current = st.sierra ?? defaultSierraShipment();
+          return {
+            brandState: {
+              ...s.brandState,
+              [s.activeBrand]: { ...st, sierra: { ...current, ...patch } },
+            },
+          };
+        }),
+
       setFormat: (patch) => set((s) => ({ format: { ...s.format, ...patch } })),
 
       setBol: (patch) => set((s) => ({ bol: { ...s.bol, ...patch } })),
@@ -262,7 +279,7 @@ export const useShipmentStore = create<ShipmentStore>()(
     {
       name: "quikt-shipment-store",
       // Persist everything so a refresh keeps the in-progress shipment.
-      version: 5,
+      version: 6,
       // v1 → v2: extended BrandKey with burlington / sierra / ddDiscount.
       // v2 → v3: added the `burlington` field on ShipmentState for the
       // line-item routing flow + BOL sync. Backfill it for the two brands
@@ -298,6 +315,15 @@ export const useShipmentStore = create<ShipmentStore>()(
         }
         if (version < 5) {
           p.format = { ...defaultFormat(), ...(p.format ?? {}) } as LabelFormat;
+        }
+        if (version < 6 && p.brandState) {
+          // v5 → v6: added the `sierra` field on ShipmentState for the
+          // Sierra Trading Post routing matrix. Backfill it for the
+          // sierra brand so the component's selector finds the field.
+          const bs = p.brandState;
+          if (bs.sierra && !bs.sierra.sierra) {
+            bs.sierra = { ...bs.sierra, sierra: defaultSierraShipment() };
+          }
         }
         return p;
       },
