@@ -6,6 +6,7 @@
 
 import { createClient } from "@/lib/supabase/client";
 import { computeSummary, poDigits } from "@/lib/formulas";
+import { defaultBolForm } from "@/lib/bolHelpers";
 import type {
   BrandKey,
   ShipmentState,
@@ -152,7 +153,11 @@ export async function saveSimplePoRecord({
     brand,
     shipment_state,
     label_format: {} as Record<string, unknown>,
-    bol_form: bol ?? ({} as Record<string, unknown>),
+    // ALWAYS write a full BolForm shape — never `{}` — so future `loadRecord`
+    // calls don't replace the live `bol` with an object missing required
+    // arrays (`p1Orders` / `p2Orders`), which historically crashed the
+    // dashboard with "Cannot read properties of undefined (reading 'reduce')".
+    bol_form: bol ?? defaultBolForm(),
     summary: null,
     label_total: totals.finalQty,
     total_pallets: Math.round(totals.pallets),

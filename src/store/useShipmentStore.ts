@@ -281,17 +281,25 @@ export const useShipmentStore = create<ShipmentStore>()(
           bolBrand: rec.brand,
           brandState: { ...s.brandState, [rec.brand]: rec.shipment_state },
           format: rec.label_format,
-          bol: rec.bol_form,
+          // Merge over defaults so older records (saved with an empty `{}` for
+          // `bol_form` — Burlington / DD Discount used to do this) don't
+          // produce a bol missing required arrays like `p1Orders`. Without
+          // this guard, OrdersTable.reduce() throws on the next render.
+          bol: { ...defaultBolForm(), ...(rec.bol_form ?? {}) } as BolForm,
         })),
     }),
     {
       name: "quikt-shipment-store",
       // Persist everything so a refresh keeps the in-progress shipment.
-      version: 3,
+      version: 4,
       // v1 → v2: extended BrandKey with burlington / sierra / ddDiscount.
       // v2 → v3: added the `burlington` field on ShipmentState for the
       // line-item routing flow + BOL sync. Backfill it for the two brands
       // that use it so the new fields exist on already-persisted state.
+      // v3 → v4: heal `bol` shape — older Burlington saves wrote an empty
+      // `bol_form: {}` and `loadRecord` then replaced the live BOL with that
+      // empty object, knocking out `p1Orders` / `p2Orders` and crashing
+      // OrdersTable's reduce() on the next render.
       migrate: (persisted, version) => {
         if (!persisted) return persisted;
         const p = persisted as Partial<ShipmentStore>;
@@ -309,6 +317,9 @@ export const useShipmentStore = create<ShipmentStore>()(
               bs[b] = { ...bs[b], burlington: defaultBurlingtonShipment() };
             }
           });
+        }
+        if (version < 4) {
+          p.bol = { ...defaultBolForm(), ...(p.bol ?? {}) } as BolForm;
         }
         return p;
       },

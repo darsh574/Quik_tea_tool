@@ -5,12 +5,17 @@ import type { BolOrder } from "@/lib/types";
 const EMPTY: BolOrder = { order: "", pkgs: 0, weight: 0, pallet: true, info: "", wms: "" };
 
 export function OrdersTable({
-  orders,
+  orders: ordersProp,
   onChange,
 }: {
-  orders: BolOrder[];
+  orders: BolOrder[] | undefined;
   onChange: (orders: BolOrder[]) => void;
 }) {
+  // Guard against a legacy `bol_form: {}` that didn't include the order
+  // arrays — without this, reduce() throws "Cannot read properties of
+  // undefined (reading 'reduce')" and crashes the whole dashboard.
+  const orders = Array.isArray(ordersProp) ? ordersProp : [];
+
   function update(idx: number, patch: Partial<BolOrder>) {
     onChange(orders.map((o, i) => (i === idx ? { ...o, ...patch } : o)));
   }
