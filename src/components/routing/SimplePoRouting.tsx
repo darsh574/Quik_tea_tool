@@ -81,6 +81,12 @@ export default function SimplePoRouting({ brand }: { brand: BrandKey }) {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
 
+  // ── Pallet constants (Burlington / DD Discount use these to compute the
+  //    bottom-row totals — different from the per-row catalogue values). ──
+  const [palletCuFt, setPalletCuFt] = useState<number | "">(6.7);
+  const [palletWt, setPalletWt] = useState<number | "">(80);
+  const [maxPalletHeight, setMaxPalletHeight] = useState<number | "">(72);
+
   // ── Line items ──
   const [lines, setLines] = useState<Line[]>(() => initLines());
 
@@ -148,22 +154,40 @@ export default function SimplePoRouting({ brand }: { brand: BrandKey }) {
     let orig = 0,
       final = 0,
       qty = 0,
-      weight = 0,
-      cu = 0,
-      layers = 0,
-      pallets = 0;
+      sumWeight = 0,
+      sumCu = 0,
+      sumLayers = 0,
+      sumHeight = 0;
     computed.forEach((c) => {
       orig += c.orig;
       final += c.final;
       qty += c.qtyUnits;
-      weight += c.weightLb;
-      cu += c.cuFt;
-      layers += c.layers;
-      pallets += c.pallets;
+      sumWeight += c.weightLb;
+      sumCu += c.cuFt;
+      sumLayers += c.layers;
+      sumHeight += c.height;
     });
+    const maxH = nz(maxPalletHeight);
+    // Burlington / DD Discount pallet math:
+    //   pallets = (Σ layers × Σ height) / max-pallet-height-without-pallet
+    //   weight  = Σ weight + pallet wt × pallets
+    //   cu ft   = Σ cu ft  + pallet cu ft × pallets
+    const pallets = maxH > 0 ? (sumLayers * sumHeight) / maxH : 0;
+    const weight = sumWeight + nz(palletWt) * pallets;
+    const cu = sumCu + nz(palletCuFt) * pallets;
     const fulfillment = orig > 0 ? (final / orig) * 100 : 0;
-    return { orig, final, qty, weight, cu, layers, pallets, fulfillment };
-  }, [computed]);
+    return {
+      orig,
+      final,
+      qty,
+      weight,
+      cu,
+      layers: sumLayers,
+      pallets,
+      fulfillment,
+      sumHeight,
+    };
+  }, [computed, maxPalletHeight, palletWt, palletCuFt]);
 
   function patchLine(id: string, patch: Partial<Line>) {
     setLines((rows) =>
@@ -352,6 +376,60 @@ export default function SimplePoRouting({ brand }: { brand: BrandKey }) {
               font-size: 11.5px;
               border-radius: 8px;
             }
+
+            /* Pallet-constants strip (Burlington / DD Discount). */
+            .qt-pallet-const { padding: 14px 18px; }
+            .qt-pallet-const-title {
+              font-family: Georgia, serif;
+              font-size: 14px;
+              font-weight: 700;
+              color: #1a2a3a;
+              margin-bottom: 4px;
+            }
+            .qt-pallet-const-sub {
+              font-size: 11.5px;
+              color: #6e6960;
+              margin-bottom: 10px;
+              line-height: 1.5;
+            }
+            .qt-pallet-const-table {
+              border-collapse: collapse;
+              font-size: 12.5px;
+              font-variant-numeric: tabular-nums;
+              width: 100%;
+              max-width: 460px;
+            }
+            .qt-pallet-const-table td {
+              padding: 6px 10px;
+              border: 1px solid #e6e0d4;
+              color: #25303f;
+            }
+            .qt-pallet-const-table td.label {
+              background: #f6f3ec;
+              font-weight: 700;
+              color: #5a6370;
+              width: 70%;
+            }
+            .qt-pallet-const-table td.val { text-align: right; padding: 2px 6px; }
+            .qt-pallet-const-table input {
+              width: 100%;
+              padding: 5px 8px;
+              border: 1.5px solid transparent;
+              border-radius: 5px;
+              background: transparent;
+              font-size: 12.5px;
+              color: #25303f;
+              font-family: inherit;
+              outline: none;
+              text-align: right;
+              font-variant-numeric: tabular-nums;
+              transition: border-color 0.12s, background 0.12s, box-shadow 0.12s;
+            }
+            .qt-pallet-const-table input:focus {
+              border-color: #0e3a66;
+              background: #fff;
+              box-shadow: 0 0 0 2px rgba(14,58,102,0.1);
+            }
           `,
         }}
       />
@@ -426,6 +504,67 @@ export default function SimplePoRouting({ brand }: { brand: BrandKey }) {
             Suffix: <strong>{suffix || "—"}</strong>
           </span>
         </div>
+      </div>
+
+      {/* ── PALLET CONSTANTS ── */}
+      <div className="qt-simple-card qt-pallet-const">
+        <div className="qt-pallet-const-title">Pallet Constants</div>
+        <div className="qt-pallet-const-sub">
+          Used to compute the bottom-row totals for {brandLabel}. Override per shipment if
+          needed.
+        </div>
+        <table className="qt-pallet-const-table">
+          <tbody>
+            <tr>
+              <td className="label">Pallet Cu ft</td>
+              <td className="val">
+                <input
+                  type="number"
+                  step="0.1"
+                  min={0}
+                  value={palletCuFt}
+                  onChange={(e) =>
+                    setPalletCuFt(
+                      e.target.value === "" ? "" : parseFloat(e.target.value) || 0,
+                    )
+                  }
+                />
+              </td>
+            </tr>
+            <tr>
+              <td className="label">Pallet wt (lb)</td>
+              <td className="val">
+                <input
+                  type="number"
+                  step="1"
+                  min={0}
+                  value={palletWt}
+                  onChange={(e) =>
+                    setPalletWt(
+                      e.target.value === "" ? "" : parseFloat(e.target.value) || 0,
+                    )
+                  }
+                />
+              </td>
+            </tr>
+            <tr>
+              <td className="label">Max Pallet height without pallet (in)</td>
+              <td className="val">
+                <input
+                  type="number"
+                  step="1"
+                  min={0}
+                  value={maxPalletHeight}
+                  onChange={(e) =>
+                    setMaxPalletHeight(
+                      e.target.value === "" ? "" : parseFloat(e.target.value) || 0,
+                    )
+                  }
+                />
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
 
       {/* ── LINE-ITEM TABLE ── */}
@@ -610,8 +749,8 @@ export default function SimplePoRouting({ brand }: { brand: BrandKey }) {
                 <td className="num">{fmtNum(totals.weight, 0) || "—"}</td>
                 <td className="num">{fmtNum(totals.cu, 2) || "—"}</td>
                 <td className="num">{fmtNum(totals.layers, 1) || "—"}</td>
-                <td className="num">{fmtInt(Math.floor(totals.pallets)) || "—"}</td>
-                <td></td>
+                <td className="num">{fmtNum(totals.pallets, 2) || "—"}</td>
+                <td className="num">{fmtNum(totals.sumHeight, 1) || "—"}</td>
                 <td></td>
                 <td></td>
               </tr>
