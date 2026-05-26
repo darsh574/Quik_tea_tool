@@ -55,6 +55,27 @@ export function syncBolFromBurlington(
       ? `${cartons} cartons of QUIKTEA CHAI TEA LATTE & COFFEE`
       : `${cartons} cartons of CHAI TEA LATTE`;
 
+  // Replace the customer-orders tables with a single brand-appropriate row so
+  // the TJX-style demo defaults (DEFAULT_P1) don't leak through after a sync.
+  const palletWord = palletsInt === 1 ? "1 Pallet" : `${palletsInt} Pallets`;
+  const shipperInfo =
+    brand === "ddDiscount"
+      ? `${palletWord} (East Coast DC)`
+      : `${palletWord} (PO# ${po})`;
+  const p1Orders: BolOrder[] =
+    cartons > 0
+      ? [
+          {
+            order: po,
+            pkgs: cartons,
+            weight: weightInt,
+            pallet: true,
+            info: shipperInfo,
+            wms: "",
+          },
+        ]
+      : [];
+
   return {
     ...(brand === "burlington" ? BURLINGTON_SHIP_TO : {}),
     bol_po_number: po,
@@ -63,6 +84,8 @@ export function syncBolFromBurlington(
     hu_pkg_qty: String(cartons),
     hu_weight: String(weightInt),
     commodity,
+    p1Orders,
+    p2Orders: [],
   };
 }
 
@@ -104,6 +127,34 @@ export function syncBolFromSierra(
     ),
   );
 
+  // One customer-order row per DC that actually has shipments. Matches the
+  // Sierra reference BOL format: `1 Pallet (PO#{dc.num}{po})`.
+  const p1Orders: BolOrder[] = [];
+  dcsWithData.forEach((dc) => {
+    let dcCases = 0;
+    lines.forEach((l) => {
+      const v =
+        typeof l.final?.[dc.num] === "number"
+          ? (l.final[dc.num] as number)
+          : 0;
+      dcCases += v;
+    });
+    const dcWeight =
+      dcCases > 0
+        ? dcCases * 8 +
+          // matches SIERRA_WEIGHT_BASES from constants.ts (90 / 120)
+          (sierra.dcs.indexOf(dc) === 0 ? 90 : 120)
+        : 0;
+    p1Orders.push({
+      order: po,
+      pkgs: dcCases,
+      weight: Math.round(dcWeight),
+      pallet: true,
+      info: `1 Pallet (PO#${dc.num}${po})`,
+      wms: "",
+    });
+  });
+
   const patch: Partial<BolForm> = {
     bol_po_number: po,
     hu_qty: String(pallets),
@@ -114,6 +165,8 @@ export function syncBolFromSierra(
       cases > 0
         ? `${cases} Cases of Instant Chai Tea Latte premix powder`
         : "",
+    p1Orders,
+    p2Orders: [],
   };
 
   if (dcsWithData.length === 1) {

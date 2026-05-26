@@ -402,7 +402,7 @@ export default function BolTab() {
       <div className="card first">
         <div className="bol-action-bar">
           <div>
-            <div className="bol-title">Bill of Lading Generator — TJX Shipment Documents</div>
+            <div className="bol-title">Bill of Lading Generator</div>
             <AutoSaveBadge state={autoSaveStatus} on={autoSaveOn} lastSavedAt={lastSavedAt} />
           </div>
           <div className="bol-buttons">
