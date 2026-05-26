@@ -190,6 +190,31 @@ export function esc(s: string): string {
 }
 
 /**
+ * Word-wrap a string to a target character count per line. Used by the
+ * DD Discount label preview where the product description can be longer
+ * than the available label width. The PDF generator uses jsPDF's exact
+ * measurement (`splitTextToSize`) instead; this is the preview approximation.
+ */
+function wrapTextByChars(text: string, maxChars: number): string[] {
+  if (text.length <= maxChars) return [text];
+  const words = text.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let current = "";
+  for (const word of words) {
+    if (!current) {
+      current = word;
+    } else if ((current + " " + word).length <= maxChars) {
+      current += " " + word;
+    } else {
+      lines.push(current);
+      current = word;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
+}
+
+/**
  * DD Discount label layout — distinct from the HG / TJX / Marshalls template.
  * Pulls extra metadata from the SKU Master (Vendor Style #, case pack, item
  * description, unit weight). Any field that's missing in the catalogue is
@@ -257,15 +282,17 @@ export function buildLabelElementsDdDiscount(
   }
 
   // "{case_pack}CT {item_description}" — e.g. "10CT QUIKTEA CARDAMOM CHAI TEA LATTE"
+  // Long descriptions wrap to a second line instead of getting "…" truncated.
   if (sku?.case_pack && sku?.item_description) {
-    els.push({
-      text: `${sku.case_pack}CT ${sku.item_description}`,
-      x,
-      y,
-      fs: FN,
-      fw: "700",
-    });
-    y += SP.LG;
+    const productText = `${sku.case_pack}CT ${sku.item_description}`;
+    // Word-wrap heuristic for 12pt Helvetica across the full label width
+    // (~406pt usable → ~60 chars at the bold weight used here, allowing
+    // some safety margin for wide glyphs).
+    const wrapped = wrapTextByChars(productText, 60);
+    for (const line of wrapped) {
+      els.push({ text: line, x, y, fs: FN, fw: "700" });
+      y += SP.LG;
+    }
   }
 
   if (typeof sku?.case_pack === "number") {

@@ -140,8 +140,16 @@ export async function generateLabelZip(
             y += SP.LG;
           }
           if (sku?.case_pack && sku?.item_description) {
-            safeText(doc, `${sku.case_pack}CT ${sku.item_description}`, x, y, SP.FULL_MAX_W);
-            y += SP.LG;
+            // Long product names wrap to a second line rather than being
+            // truncated with "…". jsPDF's splitTextToSize measures the
+            // current font (Helvetica bold 12pt at this point) so the wrap
+            // point reflects the actual rendered width.
+            const productLine = `${sku.case_pack}CT ${sku.item_description}`;
+            const wrapped = doc.splitTextToSize(productLine, SP.FULL_MAX_W) as string[];
+            for (const line of wrapped) {
+              doc.text(line, x, y);
+              y += SP.LG;
+            }
           }
           if (typeof sku?.case_pack === "number") {
             safeText(doc, `Total Units per carton: ${sku.case_pack}`, x, y, SP.FULL_MAX_W);
