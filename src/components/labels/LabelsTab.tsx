@@ -5,8 +5,9 @@ import { useShipmentStore } from "@/store/useShipmentStore";
 import { BRAND_CONFIG, SPEC } from "@/lib/constants";
 import { buildLabelElements } from "@/lib/formulas";
 import { generateLabelZip, countLabelPdfs, downloadBlob } from "@/lib/labelPdf";
+import { burlingtonToShipmentState } from "@/lib/burlingtonAdapter";
 import PoPicker from "@/components/PoPicker";
-import type { LabelFormat } from "@/lib/types";
+import type { BrandKey, LabelFormat } from "@/lib/types";
 
 const FIELD_LABELS: { key: keyof LabelFormat; label: string; type?: "select" }[] = [
   { key: "dept", label: "Dept suffix" },
@@ -18,6 +19,18 @@ const FIELD_LABELS: { key: keyof LabelFormat; label: string; type?: "select" }[]
   { key: "country", label: "Country of Origin" },
 ];
 
+/**
+ * Brands that opt out of label generation entirely. (Burlington uses the
+ * line-item routing flow but only needs a BOL, no shipping labels per spec.)
+ */
+const LABEL_DISABLED_BRANDS: BrandKey[] = ["burlington"];
+
+/**
+ * Brands that use the Burlington-style line-item routing and need their data
+ * adapted into the standard ShipmentState shape before label generation.
+ */
+const ADAPTER_BRANDS: BrandKey[] = ["ddDiscount"];
+
 export default function LabelsTab() {
   const activeBrand = useShipmentStore((s) => s.activeBrand);
   const st = useShipmentStore((s) => s.brandState[s.activeBrand]);
@@ -28,30 +41,54 @@ export default function LabelsTab() {
   const [progress, setProgress] = useState<{ pct: number; label: string } | null>(null);
   const [done, setDone] = useState(false);
 
+  /**
+   * `effectiveSt` is what the label pipeline reads. For HG / TJX / Marshalls
+   * it's just `st` (no change to that flow). For DD Discount it's the
+   * synthesised ShipmentState built from `st.burlington.lines`, so the
+   * existing buildLabelElements / generateLabelZip stay unchanged.
+   */
+  const effectiveSt = useMemo(() => {
+    if (ADAPTER_BRANDS.includes(activeBrand) && st.burlington) {
+      return burlingtonToShipmentState(
+        st.burlington,
+        BRAND_CONFIG[activeBrand].defaultDCName,
+      );
+    }
+    return st;
+  }, [activeBrand, st]);
+
+  const labelsDisabled = LABEL_DISABLED_BRANDS.includes(activeBrand);
+
   // ── Live preview — mirrors updatePreview() ──
   const previewEls = useMemo(() => {
     const dcMaster = BRAND_CONFIG[activeBrand].dcMaster;
     const firstMasterKey = Object.keys(dcMaster)[0];
     const dc =
-      st.dcs[0] ||
+      effectiveSt.dcs[0] ||
       (firstMasterKey
         ? { num: firstMasterKey, ...dcMaster[firstMasterKey] }
         : { num: "882", code: "TUC", name: "HomeGoods Distribution Center", street: "", city: "" });
-    const prod = st.products[0] || "QT15";
-    const q = st.qty[prod] && st.qty[prod][dc.num] ? st.qty[prod][dc.num] : 5;
-    const from = st.from || "Quikfoods Inc";
-    return buildLabelElements(from, dc, st.po, prod, q, 1, format);
-  }, [activeBrand, st, format]);
+    const prod = effectiveSt.products[0] || "QT15";
+    const q =
+      effectiveSt.qty[prod] && effectiveSt.qty[prod][dc.num]
+        ? effectiveSt.qty[prod][dc.num]
+        : 5;
+    const from = effectiveSt.from || "Quikfoods Inc";
+    return buildLabelElements(from, dc, effectiveSt.po, prod, q, 1, format);
+  }, [activeBrand, effectiveSt, format]);
 
   // ── Generate summary — mirrors updateSummary() ──
   const genSummary = useMemo(() => {
     let totalPdfs = 0;
     let totalPages = 0;
     const lines: string[] = [];
-    st.products.forEach((prod) => {
+    effectiveSt.products.forEach((prod) => {
       let prodTotal = 0;
-      st.dcs.forEach((dc) => {
-        const q = st.qty[prod] && st.qty[prod][dc.num] ? st.qty[prod][dc.num] : 0;
+      effectiveSt.dcs.forEach((dc) => {
+        const q =
+          effectiveSt.qty[prod] && effectiveSt.qty[prod][dc.num]
+            ? effectiveSt.qty[prod][dc.num]
+            : 0;
         if (q > 0) {
           totalPdfs++;
           totalPages += q;
@@ -59,23 +96,25 @@ export default function LabelsTab() {
         }
       });
       if (prodTotal > 0) {
-        const dcCount = st.dcs.filter((dc) => st.qty[prod] && st.qty[prod][dc.num] > 0).length;
+        const dcCount = effectiveSt.dcs.filter(
+          (dc) => effectiveSt.qty[prod] && effectiveSt.qty[prod][dc.num] > 0,
+        ).length;
         lines.push(`${prod} — ${dcCount} DC${dcCount !== 1 ? "s" : ""}, ${prodTotal} total labels`);
       }
     });
     return { totalPdfs, totalPages, lines };
-  }, [st]);
+  }, [effectiveSt]);
 
   async function handleGenerate() {
     setDone(false);
-    const total = countLabelPdfs(st);
+    const total = countLabelPdfs(effectiveSt);
     if (total === 0) {
       setProgress({ pct: 0, label: "No quantities entered yet — nothing to generate." });
       setTimeout(() => setProgress(null), 3000);
       return;
     }
     setProgress({ pct: 0, label: "Generating…" });
-    const { blob, filename } = await generateLabelZip(activeBrand, st, format, (d, t, pct) => {
+    const { blob, filename } = await generateLabelZip(activeBrand, effectiveSt, format, (d, t, pct) => {
       setProgress({ pct, label: `Generating… ${d} of ${t} PDFs (${pct}%)` });
     });
     setProgress({ pct: 100, label: "Compressing ZIP…" });
@@ -86,6 +125,41 @@ export default function LabelsTab() {
   }
 
   const previewX = SPEC.X;
+
+  // Burlington uses the BOL flow only — no shipping labels. Show a small
+  // placeholder card instead of the full label editor / generator.
+  if (labelsDisabled) {
+    return (
+      <>
+        <PoPicker context="labels" />
+        <div className="card first last">
+          <div className="section-title">
+            Label Generator — {BRAND_CONFIG[activeBrand].label}
+          </div>
+          <p className="hint" style={{ marginTop: 8 }}>
+            <strong>{BRAND_CONFIG[activeBrand].label}</strong> ships without
+            carton labels — only the Bill of Lading is required. Head to the{" "}
+            <button
+              onClick={() => setActiveTab("bol")}
+              style={{
+                color: "#0e3a66",
+                fontWeight: 700,
+                background: "none",
+                border: "none",
+                padding: 0,
+                cursor: "pointer",
+                textDecoration: "underline",
+                font: "inherit",
+              }}
+            >
+              Bill of Lading
+            </button>{" "}
+            tab to generate the BOL for this PO.
+          </p>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
