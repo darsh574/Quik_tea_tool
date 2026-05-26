@@ -23,6 +23,8 @@ import {
   BRAND_CONFIG,
   defaultSierraShipment,
   newSierraLine,
+  SIERRA_WEIGHT_PER_UNIT,
+  SIERRA_WEIGHT_BASES,
 } from "@/lib/constants";
 import { listSkuMaster } from "@/lib/skuMaster";
 import type {
@@ -163,6 +165,44 @@ export default function SierraRouting({ brand }: { brand: BrandKey }) {
     });
     return { origPerDc, finalPerDc, cuftPerDc, origCases, origUnits, finalCases, finalUnits };
   }, [lines, computed, dcs]);
+
+  /**
+   * Summary rows shown below the totals row — these match the bottom of the
+   * customer's worksheet:
+   *   total units (per DC) = per_dc × 10
+   *   WEIGHT (per DC)       = per_dc × 8 + base   (base from SIERRA_WEIGHT_BASES)
+   *   PALLET (per DC)       = 1 by default        (editable later if needed)
+   *   WEIGHT ROUND UP       = Math.ceil(WEIGHT)   (rounded to integer lb)
+   */
+  const summary = useMemo(() => {
+    const baseFor = (idx: number) =>
+      SIERRA_WEIGHT_BASES[Math.min(idx, SIERRA_WEIGHT_BASES.length - 1)];
+
+    const origTotalUnitsPerDc: Record<string, number> = {};
+    const finalTotalUnitsPerDc: Record<string, number> = {};
+    const origWeightPerDc: Record<string, number> = {};
+    const finalWeightPerDc: Record<string, number> = {};
+    const palletPerDc: Record<string, number> = {};
+
+    dcs.forEach((d, idx) => {
+      const base = baseFor(idx);
+      const origPerDc = totals.origPerDc[d.num] ?? 0;
+      const finalPerDc = totals.finalPerDc[d.num] ?? 0;
+      origTotalUnitsPerDc[d.num] = origPerDc * 10;
+      finalTotalUnitsPerDc[d.num] = finalPerDc * 10;
+      origWeightPerDc[d.num] = origPerDc * SIERRA_WEIGHT_PER_UNIT + base;
+      finalWeightPerDc[d.num] = finalPerDc * SIERRA_WEIGHT_PER_UNIT + base;
+      palletPerDc[d.num] = 1;
+    });
+
+    return {
+      origTotalUnitsPerDc,
+      finalTotalUnitsPerDc,
+      origWeightPerDc,
+      finalWeightPerDc,
+      palletPerDc,
+    };
+  }, [totals.origPerDc, totals.finalPerDc, dcs]);
 
   function patchLine(id: string, patch: Partial<SierraLine>) {
     setLines(lines.map((r) => (r._id === id ? { ...r, ...patch } : r)));
@@ -308,6 +348,19 @@ export default function SierraRouting({ brand }: { brand: BrandKey }) {
               font-weight: 700;
               border-top: 1.5px solid #d6ccb8;
               padding-top: 7px; padding-bottom: 7px;
+            }
+            .qt-sierra-table tbody tr.summary-row td {
+              background: #f6f3ec !important;
+              font-weight: 600;
+              color: #25303f;
+              padding-top: 6px; padding-bottom: 6px;
+              font-size: 11.5px;
+              letter-spacing: 0.02em;
+            }
+            .qt-sierra-table tbody tr.summary-row td:first-child + td {
+              text-transform: uppercase;
+              letter-spacing: 0.08em;
+              color: #5a6370;
             }
             .qt-sierra-table input {
               width: 80px;
@@ -551,6 +604,81 @@ export default function SierraRouting({ brand }: { brand: BrandKey }) {
                 {dcs.map((d) => (
                   <td key={`tc-${d.num}`}>{fmtNum(totals.cuftPerDc[d.num], 2) || "—"}</td>
                 ))}
+                <td></td>
+              </tr>
+
+              {/* total units — per-DC × 10 (matches Excel row 18: =C17*10). */}
+              <tr className="summary-row">
+                <td colSpan={2} style={{ textAlign: "right" }}>total units</td>
+                {dcs.map((d) => (
+                  <td key={`tu-o-${d.num}`}>
+                    {fmtInt(summary.origTotalUnitsPerDc[d.num]) || "—"}
+                  </td>
+                ))}
+                <td colSpan={2}></td>
+                {dcs.map((d) => (
+                  <td key={`tu-f-${d.num}`}>
+                    {fmtInt(summary.finalTotalUnitsPerDc[d.num]) || "—"}
+                  </td>
+                ))}
+                <td colSpan={2}></td>
+                <td colSpan={dcs.length + 1}></td>
+                <td></td>
+              </tr>
+
+              {/* WEIGHT — per-DC × 8 + base (90 for DC1, 120 for DC2).
+                  Matches Excel row 19: =C17*8+90 / =D17*8+90+30. */}
+              <tr className="summary-row">
+                <td colSpan={2} style={{ textAlign: "right" }}>WEIGHT</td>
+                {dcs.map((d) => (
+                  <td key={`w-o-${d.num}`}>
+                    {fmtInt(summary.origWeightPerDc[d.num]) || "—"}
+                  </td>
+                ))}
+                <td colSpan={2}></td>
+                {dcs.map((d) => (
+                  <td key={`w-f-${d.num}`}>
+                    {fmtInt(summary.finalWeightPerDc[d.num]) || "—"}
+                  </td>
+                ))}
+                <td colSpan={2}></td>
+                <td colSpan={dcs.length + 1}></td>
+                <td></td>
+              </tr>
+
+              {/* PALLET — 1 per DC by default. Matches Excel row 20. */}
+              <tr className="summary-row">
+                <td colSpan={2} style={{ textAlign: "right" }}>PALLET</td>
+                {dcs.map((d) => (
+                  <td key={`p-o-${d.num}`}>{summary.palletPerDc[d.num]}</td>
+                ))}
+                <td colSpan={2}></td>
+                {dcs.map((d) => (
+                  <td key={`p-f-${d.num}`}>{summary.palletPerDc[d.num]}</td>
+                ))}
+                <td colSpan={2}></td>
+                <td colSpan={dcs.length + 1}></td>
+                <td></td>
+              </tr>
+
+              {/* WEIGHT ROUND UP — Math.ceil(WEIGHT). Matches Excel row 21
+                  label (the customer fills this manually on the sheet;
+                  here we surface the ceiling so it's there at a glance). */}
+              <tr className="summary-row">
+                <td colSpan={2} style={{ textAlign: "right" }}>WEIGHT ROUND UP</td>
+                {dcs.map((d) => (
+                  <td key={`wr-o-${d.num}`}>
+                    {fmtInt(Math.ceil(summary.origWeightPerDc[d.num])) || "—"}
+                  </td>
+                ))}
+                <td colSpan={2}></td>
+                {dcs.map((d) => (
+                  <td key={`wr-f-${d.num}`}>
+                    {fmtInt(Math.ceil(summary.finalWeightPerDc[d.num])) || "—"}
+                  </td>
+                ))}
+                <td colSpan={2}></td>
+                <td colSpan={dcs.length + 1}></td>
                 <td></td>
               </tr>
             </tbody>

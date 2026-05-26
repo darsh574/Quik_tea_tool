@@ -218,7 +218,14 @@ export default function RoutingTab() {
       {/* ── BRAND TABS ── */}
       <div className="qt-brand-tabs" role="tablist">
         {BRAND_TABS.map((b) => {
-          const ready = ROUTING_READY_BRANDS.includes(b);
+          // A brand is "pending" only if NONE of the three routing flows
+          // handle it (classic upload, simple-PO line items, or Sierra
+          // matrix). Burlington / DD Discount / Sierra all now have their
+          // own implementations, so the "soon" tag never shows for them.
+          const hasRouting =
+            ROUTING_READY_BRANDS.includes(b) ||
+            SIMPLE_PO_BRANDS.includes(b) ||
+            SIERRA_BRANDS.includes(b);
           return (
             <button
               key={b}
@@ -227,7 +234,7 @@ export default function RoutingTab() {
               className={
                 "qt-brand-tab" +
                 (activeBrand === b ? " active" : "") +
-                (ready ? "" : " pending")
+                (hasRouting ? "" : " pending")
               }
               onClick={() => setActiveBrand(b)}
             >

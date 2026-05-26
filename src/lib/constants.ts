@@ -24,22 +24,36 @@ export const SIERRA_DCS: SierraDc[] = [
 
 /** Fresh blank Sierra line — empty per-DC orig/final maps populated by the
  *  component on first render. */
-export function newSierraLine(): SierraLine {
+export function newSierraLine(product = ""): SierraLine {
   return {
     _id: Math.random().toString(36).slice(2),
-    product: "",
+    product,
     orig: {},
     final: {},
   };
 }
 
+/**
+ * Default Sierra product list — these are the SKUs Sierra Trading Post
+ * orders. Pre-filled per the customer's `siara routing.xlsx` reference.
+ */
+export const SIERRA_DEFAULT_PRODUCTS = [
+  "QT15", "QT75", "QT55", "QT13", "QT16", "QT54", "QT37",
+];
+
 export function defaultSierraShipment(): SierraShipment {
   return {
     poNumber: "",
     dcs: SIERRA_DCS.map((d) => ({ ...d })),
-    lines: Array.from({ length: 7 }, newSierraLine),
+    lines: SIERRA_DEFAULT_PRODUCTS.map((p) => newSierraLine(p)),
   };
 }
+
+/** Per-DC weight base (lb) used by the Sierra weight formula:
+ *  weight = per_dc_total × 8 + base. From the customer's worksheet:
+ *  DC1 base = 90, DC2 base = 120 (90 + 30). */
+export const SIERRA_WEIGHT_PER_UNIT = 8;
+export const SIERRA_WEIGHT_BASES = [90, 120];
 
 /** Fresh blank line item for the Burlington / DD Discount routing table. */
 export function newBurlingtonLine(): BurlingtonLine {
