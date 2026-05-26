@@ -165,11 +165,17 @@ export interface BurlingtonShipment {
   palletConstants: BurlingtonPalletConstants;
 }
 
-/** A Sierra Trading Post distribution center (num + code + state). */
+/** A Sierra Trading Post distribution center (num + code + state + address). */
 export interface SierraDc {
   num: string;   // e.g. "0810"
   code: string;  // e.g. "CHE"
   state: string; // e.g. "WY"
+  /** Full DC name on the label, e.g. "Sierra Distribution Center". */
+  name?: string;
+  /** Street address, e.g. "4077 Airbase Road". */
+  street?: string;
+  /** City / State / Zip, e.g. "Ashville, OH 43103". */
+  city?: string;
 }
 
 /** One product row in the Sierra routing matrix. */

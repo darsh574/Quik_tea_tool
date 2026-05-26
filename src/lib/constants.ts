@@ -16,10 +16,26 @@ import type {
   SierraShipment,
 } from "./types";
 
-/** Sierra Trading Post default DCs — from the customer's `siara routing.xlsx`. */
+/** Sierra Trading Post default DCs — from the customer's `siara routing.xlsx`.
+ *  Addresses match the reference label PDF for 0860; 0810 keeps a placeholder
+ *  city/state until the customer supplies the full address. */
 export const SIERRA_DCS: SierraDc[] = [
-  { num: "0810", code: "CHE", state: "WY" },
-  { num: "0860", code: "ASH", state: "OH" },
+  {
+    num: "0810",
+    code: "CHE",
+    state: "WY",
+    name: "Sierra Distribution Center",
+    street: "",
+    city: "Cheyenne, WY",
+  },
+  {
+    num: "0860",
+    code: "ASH",
+    state: "OH",
+    name: "Sierra Distribution Center",
+    street: "4077 Airbase Road",
+    city: "Ashville, OH 43103",
+  },
 ];
 
 /** Fresh blank Sierra line — empty per-DC orig/final maps populated by the

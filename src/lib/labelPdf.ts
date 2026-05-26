@@ -12,6 +12,8 @@ import type { BrandKey, ShipmentState, LabelFormat, SkuMasterRow } from "./types
 
 /** Brands that use the DD Discount label template (different from HG/TJX/MAR). */
 const DD_LABEL_BRANDS: BrandKey[] = ["ddDiscount"];
+/** Brands that use the Sierra label template (HG-style with format tweaks). */
+const SIERRA_LABEL_BRANDS: BrandKey[] = ["sierra"];
 
 /** Truncate text with an ellipsis so it never overflows maxW (jsPDF measure). */
 function safeText(doc: jsPDF, text: string, x: number, y: number, maxW?: number): void {
@@ -87,6 +89,7 @@ export async function generateLabelZip(
       const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: [PW, PH] });
 
       const useDdLayout = DD_LABEL_BRANDS.includes(activeBrand);
+      const useSierraLayout = SIERRA_LABEL_BRANDS.includes(activeBrand);
       const sku = useDdLayout
         ? skuLookup?.get((prod || "").toUpperCase().trim())
         : undefined;
@@ -101,7 +104,47 @@ export async function generateLabelZip(
         doc.setFont(SP.FONT, "normal");
         doc.setFontSize(SP.FS_NORM);
 
-        if (useDdLayout) {
+        if (useSierraLayout) {
+          // ── Sierra template (see `Sierra DC 0860 QT15 PO 0860R986505.pdf`).
+          //    HG-style content with: `To:` colon, single-line address,
+          //    `PO # {dc.num}{po}` with no Dept suffix. ──
+          safeText(doc, `From: ${from}`, x, y, SP.FULL_MAX_W);
+          y += SP.LG;
+
+          doc.setFont(SP.FONT, "bold");
+          safeText(doc, `To: ${dc.name} #${dc.num}`, x, y, SP.FULL_MAX_W);
+          y += SP.LG;
+
+          doc.setFont(SP.FONT, "normal");
+          const addressLine = [dc.street, dc.city]
+            .map((s) => (s || "").trim())
+            .filter(Boolean)
+            .join(", ");
+          if (addressLine) {
+            safeText(doc, addressLine, x, y, SP.FULL_MAX_W);
+          }
+
+          const divY = y + SP.DIV_BELOW;
+          doc.setDrawColor(150, 150, 150);
+          doc.setLineWidth(0.5);
+          doc.line(x, divY, PW - x, divY);
+          y = divY + SP.DIV_TO_PO;
+
+          doc.setFont(SP.FONT, "bold");
+          // PO format: dc.num concatenated directly with the PO (e.g.
+          // "0860R986505"). No Dept # suffix on Sierra labels.
+          safeText(doc, `PO # ${dc.num}${po}`, x, y, SP.FULL_MAX_W);
+          y += SP.LG;
+          safeText(doc, `${f.vendorLabel} ${prod}`, x, y, SP.LEFT_MAX_W);
+          safeText(doc, `${f.unitsLabel} ${f.unitsVal}`, xR, y, SP.RIGHT_MAX_W);
+          y += SP.LG;
+
+          doc.setFont(SP.FONT, "normal");
+          safeText(doc, `Stock Ready: ${f.stock}`, x, y, SP.LEFT_MAX_W);
+          safeText(doc, `Preticketed: ${f.pretick}`, xR, y, SP.RIGHT_MAX_W);
+          y += SP.LG;
+          safeText(doc, `Country of Origin: ${f.country}`, x, y, SP.FULL_MAX_W);
+        } else if (useDdLayout) {
           // ── DD Discount label template (see e:\Downloads\DDs PO 80778126
           //    QT12.pdf for the reference). Fields missing from the SKU
           //    Master row are silently skipped. ──

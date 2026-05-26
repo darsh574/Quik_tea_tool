@@ -190,6 +190,77 @@ export function esc(s: string): string {
 }
 
 /**
+ * Sierra Trading Post label — close to the HG / TJX / Marshalls template
+ * but with three intentional differences (per the reference label PDF
+ * `Sierra DC 0860 QT15 PO 0860R986505.pdf`):
+ *
+ *   1. To line:   `To: {name} #{dc.num}`     (colon, no space before #)
+ *   2. PO line:   `PO # {dc.num}{po}`        (DC prepended, no Dept suffix)
+ *   3. Address:   single-line "{street}, {city}"  (HG/TJX use two lines)
+ *
+ * The Vendor Style / Total Units / Stock Ready / Preticketed / Country of
+ * Origin block remains identical to HG/TJX, driven by the same LabelFormat
+ * fields the user already edits in the Label Generator.
+ */
+export function buildLabelElementsSierra(
+  from: string,
+  dc: DC,
+  po: string,
+  prod: string,
+  q: number,
+  cartonNum: number,
+  f: LabelFormat,
+): LabelElement[] {
+  const SP = SPEC;
+  const x = SP.X;
+  const xR = SP.X_RIGHT;
+  const FN = SP.FS_NORM;
+  const FC = SP.FS_CARTON;
+  const els: LabelElement[] = [];
+  let y = SP.Y_TOP;
+
+  els.push({ text: `From: ${from}`, x, y, fs: FN, fw: "400" });
+  y += SP.LG;
+  els.push({ text: `To: ${dc.name} #${dc.num}`, x, y, fs: FN, fw: "700" });
+  y += SP.LG;
+
+  const addressLine = [dc.street, dc.city]
+    .map((s) => (s || "").trim())
+    .filter(Boolean)
+    .join(", ");
+  if (addressLine) {
+    els.push({ text: addressLine, x, y, fs: FN, fw: "400" });
+  }
+
+  const divY = y + SP.DIV_BELOW;
+  els.push({ isDivider: true, y: divY });
+  y = divY + SP.DIV_TO_PO;
+
+  els.push({ text: `PO # ${dc.num}${po}`, x, y, fs: FN, fw: "700" });
+  y += SP.LG;
+  els.push({ text: `${f.vendorLabel} ${prod}`, x, y, fs: FN, fw: "700" });
+  els.push({ text: `${f.unitsLabel} ${f.unitsVal}`, x: xR, y, fs: FN, fw: "700" });
+  y += SP.LG;
+  els.push({ text: `Stock Ready: ${f.stock}`, x, y, fs: FN, fw: "400" });
+  els.push({ text: `Preticketed: ${f.pretick}`, x: xR, y, fs: FN, fw: "400" });
+  y += SP.LG;
+  els.push({ text: `Country of Origin: ${f.country}`, x, y, fs: FN, fw: "400" });
+
+  const ct = `Carton #${cartonNum} of ${q}`;
+  const approxW = ct.length * FC * 0.575;
+  els.push({
+    text: ct,
+    x: (SP.PW - approxW) / 2,
+    y: SP.Y_CARTON,
+    fs: FC,
+    fw: "700",
+    isCarton: true,
+  });
+
+  return els;
+}
+
+/**
  * Word-wrap a string to a target character count per line. Used by the
  * DD Discount label preview where the product description can be longer
  * than the available label width. The PDF generator uses jsPDF's exact

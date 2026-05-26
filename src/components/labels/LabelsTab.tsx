@@ -3,9 +3,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useShipmentStore } from "@/store/useShipmentStore";
 import { BRAND_CONFIG, SPEC } from "@/lib/constants";
-import { buildLabelElements, buildLabelElementsDdDiscount } from "@/lib/formulas";
+import {
+  buildLabelElements,
+  buildLabelElementsDdDiscount,
+  buildLabelElementsSierra,
+} from "@/lib/formulas";
 import { generateLabelZip, countLabelPdfs, downloadBlob } from "@/lib/labelPdf";
 import { burlingtonToShipmentState } from "@/lib/burlingtonAdapter";
+import { sierraToShipmentState } from "@/lib/sierraAdapter";
 import { listSkuMaster } from "@/lib/skuMaster";
 import PoPicker from "@/components/PoPicker";
 import type { BrandKey, LabelFormat, SkuMasterRow } from "@/lib/types";
@@ -32,6 +37,9 @@ const LABEL_DISABLED_BRANDS: BrandKey[] = ["burlington"];
  */
 const ADAPTER_BRANDS: BrandKey[] = ["ddDiscount"];
 
+/** Brands whose routing data lives in `sierra` and needs Sierra's adapter. */
+const SIERRA_ADAPTER_BRANDS: BrandKey[] = ["sierra"];
+
 export default function LabelsTab() {
   const activeBrand = useShipmentStore((s) => s.activeBrand);
   const st = useShipmentStore((s) => s.brandState[s.activeBrand]);
@@ -56,11 +64,15 @@ export default function LabelsTab() {
         activeBrand,
       );
     }
+    if (SIERRA_ADAPTER_BRANDS.includes(activeBrand) && st.sierra) {
+      return sierraToShipmentState(st.sierra);
+    }
     return st;
   }, [activeBrand, st]);
 
   const labelsDisabled = LABEL_DISABLED_BRANDS.includes(activeBrand);
   const useDdLayout = ADAPTER_BRANDS.includes(activeBrand);
+  const useSierraLayout = SIERRA_ADAPTER_BRANDS.includes(activeBrand);
 
   // ── SKU Master lookup (only needed for DD Discount labels). ──
   const [skus, setSkus] = useState<SkuMasterRow[]>([]);
@@ -101,8 +113,11 @@ export default function LabelsTab() {
       const sku = skuLookup.get(prod.toUpperCase().trim());
       return buildLabelElementsDdDiscount(from, dc, fullPo, q, 1, sku);
     }
+    if (useSierraLayout) {
+      return buildLabelElementsSierra(from, dc, effectiveSt.po, prod, q, 1, format);
+    }
     return buildLabelElements(from, dc, effectiveSt.po, prod, q, 1, format);
-  }, [activeBrand, effectiveSt, format, useDdLayout, skuLookup]);
+  }, [activeBrand, effectiveSt, format, useDdLayout, useSierraLayout, skuLookup]);
 
   // ── Generate summary — mirrors updateSummary() ──
   const genSummary = useMemo(() => {
