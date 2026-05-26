@@ -182,17 +182,23 @@ export default function SierraRouting({ brand }: { brand: BrandKey }) {
     const finalTotalUnitsPerDc: Record<string, number> = {};
     const origWeightPerDc: Record<string, number> = {};
     const finalWeightPerDc: Record<string, number> = {};
-    const palletPerDc: Record<string, number> = {};
+    const origPalletPerDc: Record<string, number> = {};
+    const finalPalletPerDc: Record<string, number> = {};
 
     dcs.forEach((d, idx) => {
       const base = baseFor(idx);
       const origPerDc = totals.origPerDc[d.num] ?? 0;
       const finalPerDc = totals.finalPerDc[d.num] ?? 0;
-      origTotalUnitsPerDc[d.num] = origPerDc * 10;
-      finalTotalUnitsPerDc[d.num] = finalPerDc * 10;
-      origWeightPerDc[d.num] = origPerDc * SIERRA_WEIGHT_PER_UNIT + base;
-      finalWeightPerDc[d.num] = finalPerDc * SIERRA_WEIGHT_PER_UNIT + base;
-      palletPerDc[d.num] = 1;
+
+      // total units / weight / pallet only have meaning once the user has
+      // actually entered something for that DC — otherwise the base (90 /
+      // 120 lb) and pallet=1 would show up on a completely blank table.
+      origTotalUnitsPerDc[d.num] = origPerDc > 0 ? origPerDc * 10 : 0;
+      finalTotalUnitsPerDc[d.num] = finalPerDc > 0 ? finalPerDc * 10 : 0;
+      origWeightPerDc[d.num] = origPerDc > 0 ? origPerDc * SIERRA_WEIGHT_PER_UNIT + base : 0;
+      finalWeightPerDc[d.num] = finalPerDc > 0 ? finalPerDc * SIERRA_WEIGHT_PER_UNIT + base : 0;
+      origPalletPerDc[d.num] = origPerDc > 0 ? 1 : 0;
+      finalPalletPerDc[d.num] = finalPerDc > 0 ? 1 : 0;
     });
 
     return {
@@ -200,7 +206,8 @@ export default function SierraRouting({ brand }: { brand: BrandKey }) {
       finalTotalUnitsPerDc,
       origWeightPerDc,
       finalWeightPerDc,
-      palletPerDc,
+      origPalletPerDc,
+      finalPalletPerDc,
     };
   }, [totals.origPerDc, totals.finalPerDc, dcs]);
 
@@ -646,15 +653,19 @@ export default function SierraRouting({ brand }: { brand: BrandKey }) {
                 <td></td>
               </tr>
 
-              {/* PALLET — 1 per DC by default. Matches Excel row 20. */}
+              {/* PALLET — 1 per DC once that DC has data, otherwise blank. */}
               <tr className="summary-row">
                 <td colSpan={2} style={{ textAlign: "right" }}>PALLET</td>
                 {dcs.map((d) => (
-                  <td key={`p-o-${d.num}`}>{summary.palletPerDc[d.num]}</td>
+                  <td key={`p-o-${d.num}`}>
+                    {summary.origPalletPerDc[d.num] || "—"}
+                  </td>
                 ))}
                 <td colSpan={2}></td>
                 {dcs.map((d) => (
-                  <td key={`p-f-${d.num}`}>{summary.palletPerDc[d.num]}</td>
+                  <td key={`p-f-${d.num}`}>
+                    {summary.finalPalletPerDc[d.num] || "—"}
+                  </td>
                 ))}
                 <td colSpan={2}></td>
                 <td colSpan={dcs.length + 1}></td>
