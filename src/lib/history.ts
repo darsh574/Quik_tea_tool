@@ -7,6 +7,7 @@
 import { createClient } from "@/lib/supabase/client";
 import { computeSummary, poDigits } from "@/lib/formulas";
 import { defaultBolForm } from "@/lib/bolHelpers";
+import { defaultLabelFormat } from "@/lib/labelFormat";
 import type {
   BrandKey,
   ShipmentState,
@@ -102,6 +103,10 @@ export interface SaveSimpleInput {
   /** Optional — persist the in-progress BOL form too (used by the BOL tab's
    *  Sync / auto-save flow for Burlington / DD Discount). */
   bol?: BolForm;
+  /** Optional — persist the in-progress Label Format. Without this we'd
+   *  save `{}` and a later `loadRecord` would wipe the live format, making
+   *  every label render "undefined QT15" instead of "Vendor Style # QT15". */
+  format?: LabelFormat;
 }
 
 export async function saveSimplePoRecord({
@@ -109,6 +114,7 @@ export async function saveSimplePoRecord({
   burlington,
   totals,
   bol,
+  format,
 }: SaveSimpleInput): Promise<PoRecord> {
   const supabase = createClient();
 
@@ -152,7 +158,11 @@ export async function saveSimplePoRecord({
     po_digits: poDigits(poNumber),
     brand,
     shipment_state,
-    label_format: {} as Record<string, unknown>,
+    // ALWAYS write a full LabelFormat — never `{}` — so future `loadRecord`
+    // calls don't strip `vendorLabel` / `dept` / etc. from the live format,
+    // which made the generated label render "undefined QT15" instead of
+    // "Vendor Style # QT15".
+    label_format: format ?? defaultLabelFormat(),
     // ALWAYS write a full BolForm shape — never `{}` — so future `loadRecord`
     // calls don't replace the live `bol` with an object missing required
     // arrays (`p1Orders` / `p2Orders`), which historically crashed the

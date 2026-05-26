@@ -141,6 +141,7 @@ export default function SimplePoRouting({ brand }: { brand: BrandKey }) {
   const [submitMsg, setSubmitMsg] = useState<{ kind: "ok" | "err"; msg: string } | null>(null);
   const bumpDataVersion = useShipmentStore((s) => s.bumpDataVersion);
   const bolFormFromStore = useShipmentStore((s) => s.bol);
+  const labelFormatFromStore = useShipmentStore((s) => s.format);
 
   // ── SKU Master lookup ──
   const [skus, setSkus] = useState<SkuMasterRow[]>([]);
@@ -333,6 +334,7 @@ export default function SimplePoRouting({ brand }: { brand: BrandKey }) {
         },
         // Carry whatever the user has set on the BOL tab so it survives recall.
         bol: bolFormFromStore,
+        format: labelFormatFromStore,
       });
       bumpDataVersion();
       setSubmitMsg({

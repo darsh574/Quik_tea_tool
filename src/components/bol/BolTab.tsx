@@ -67,6 +67,7 @@ export default function BolTab() {
               pallets: burlingtonTotals?.pallets ?? 0,
             },
             bol,
+            format,
           });
         } else {
           await savePoRecord({ brand: activeBrand, shipmentState: st, format, bol });
@@ -173,6 +174,7 @@ export default function BolTab() {
             pallets: burlingtonTotals?.pallets ?? 0,
           },
           bol: { ...bol, ...patch },
+          format,
         });
         setLastSavedAt(new Date());
         setAutoSaveStatus("saved");
@@ -237,6 +239,7 @@ export default function BolTab() {
                 pallets: burlingtonTotals?.pallets ?? 0,
               },
               bol,
+              format,
             })
           : await savePoRecord({ brand: activeBrand, shipmentState: st, format, bol });
       setLastSavedAt(new Date());
@@ -274,6 +277,7 @@ export default function BolTab() {
               pallets: burlingtonTotals?.pallets ?? 0,
             },
             bol,
+            format,
           });
         } else {
           await savePoRecord({ brand: activeBrand, shipmentState: st, format, bol });

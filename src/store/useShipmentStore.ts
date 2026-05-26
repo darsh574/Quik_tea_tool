@@ -12,6 +12,7 @@ import {
   defaultBurlingtonShipment,
 } from "@/lib/constants";
 import { defaultBolForm } from "@/lib/bolHelpers";
+import { defaultLabelFormat } from "@/lib/labelFormat";
 import { poDigits } from "@/lib/formulas";
 import type {
   BrandKey,
@@ -25,17 +26,9 @@ import type {
   BurlingtonShipment,
 } from "@/lib/types";
 
-function defaultFormat(): LabelFormat {
-  return {
-    dept: "Dept # 51",
-    vendorLabel: "Vendor Style #",
-    unitsLabel: "Total Units:",
-    unitsVal: "10",
-    stock: "No",
-    pretick: "No",
-    country: "India",
-  };
-}
+// `defaultLabelFormat` lives in `@/lib/labelFormat` so both the store and
+// `saveSimplePoRecord` can share the same canonical defaults.
+const defaultFormat = defaultLabelFormat;
 
 interface ShipmentStore {
   activeBrand: BrandKey;
@@ -254,7 +247,11 @@ export const useShipmentStore = create<ShipmentStore>()(
           activeBrand: rec.brand,
           bolBrand: rec.brand,
           brandState: { ...s.brandState, [rec.brand]: rec.shipment_state },
-          format: rec.label_format,
+          // Same defensive merge as `bol` below — Burlington / DD Discount
+          // records used to save `label_format: {}`, which would otherwise
+          // strip `vendorLabel` / `dept` / etc. and produce labels with
+          // "undefined" baked in.
+          format: { ...defaultFormat(), ...(rec.label_format ?? {}) } as LabelFormat,
           // Merge over defaults so older records (saved with an empty `{}` for
           // `bol_form` — Burlington / DD Discount used to do this) don't
           // produce a bol missing required arrays like `p1Orders`. Without
@@ -265,7 +262,7 @@ export const useShipmentStore = create<ShipmentStore>()(
     {
       name: "quikt-shipment-store",
       // Persist everything so a refresh keeps the in-progress shipment.
-      version: 4,
+      version: 5,
       // v1 → v2: extended BrandKey with burlington / sierra / ddDiscount.
       // v2 → v3: added the `burlington` field on ShipmentState for the
       // line-item routing flow + BOL sync. Backfill it for the two brands
@@ -274,6 +271,10 @@ export const useShipmentStore = create<ShipmentStore>()(
       // `bol_form: {}` and `loadRecord` then replaced the live BOL with that
       // empty object, knocking out `p1Orders` / `p2Orders` and crashing
       // OrdersTable's reduce() on the next render.
+      // v4 → v5: heal `format` for the same reason — empty `label_format: {}`
+      // made `f.vendorLabel` etc. undefined in `buildLabelElements` so labels
+      // rendered as "undefined QT15" on Routing/Labels for any user who'd
+      // loaded a Burlington record.
       migrate: (persisted, version) => {
         if (!persisted) return persisted;
         const p = persisted as Partial<ShipmentStore>;
@@ -294,6 +295,9 @@ export const useShipmentStore = create<ShipmentStore>()(
         }
         if (version < 4) {
           p.bol = { ...defaultBolForm(), ...(p.bol ?? {}) } as BolForm;
+        }
+        if (version < 5) {
+          p.format = { ...defaultFormat(), ...(p.format ?? {}) } as LabelFormat;
         }
         return p;
       },
