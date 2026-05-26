@@ -98,12 +98,16 @@ export interface SaveSimpleInput {
     cu: number;
     pallets: number;
   };
+  /** Optional — persist the in-progress BOL form too (used by the BOL tab's
+   *  Sync / auto-save flow for Burlington / DD Discount). */
+  bol?: BolForm;
 }
 
 export async function saveSimplePoRecord({
   brand,
   burlington,
   totals,
+  bol,
 }: SaveSimpleInput): Promise<PoRecord> {
   const supabase = createClient();
 
@@ -147,11 +151,11 @@ export async function saveSimplePoRecord({
     brand,
     shipment_state,
     label_format: {} as Record<string, unknown>,
-    bol_form: {} as Record<string, unknown>,
+    bol_form: bol ?? ({} as Record<string, unknown>),
     summary: null,
     label_total: totals.finalQty,
     total_pallets: Math.round(totals.pallets),
-    bol_number: null,
+    bol_number: bol?.bol_number || null,
     created_by: user?.id ?? null,
     created_by_username: username,
   };

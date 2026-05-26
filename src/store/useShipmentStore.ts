@@ -6,9 +6,25 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { makeDefaultBrandState, BRAND_CONFIG } from "@/lib/constants";
-import { defaultBolForm } from "@/lib/bolHelpers";
+import {
+  makeDefaultBrandState,
+  BRAND_CONFIG,
+  defaultBurlingtonShipment,
+} from "@/lib/constants";
+import { defaultBolForm, BURLINGTON_SHIP_TO } from "@/lib/bolHelpers";
 import { poDigits } from "@/lib/formulas";
+
+/**
+ * Brand-specific Ship-To defaults. When the active brand changes, the BOL
+ * Ship-To swaps to match. Brands not listed here use the original TJX-style
+ * defaults from `defaultBolForm()`.
+ */
+const BRAND_SHIP_TO: Partial<
+  Record<BrandKey, { st_name: string; st_location: string; st_address: string; st_csz: string }>
+> = {
+  burlington: { ...BURLINGTON_SHIP_TO },
+  ddDiscount: { ...BURLINGTON_SHIP_TO },
+};
 import type {
   BrandKey,
   TabKey,
@@ -18,6 +34,7 @@ import type {
   BolOrder,
   DC,
   PoRecord,
+  BurlingtonShipment,
 } from "@/lib/types";
 
 function defaultFormat(): LabelFormat {
@@ -38,6 +55,14 @@ interface ShipmentStore {
   brandState: Record<BrandKey, ShipmentState>;
   format: LabelFormat;
   bol: BolForm;
+  /**
+   * The brand the current `bol.st_*` fields were last initialised for.
+   * When `activeBrand` changes to a brand with custom Ship-To defaults
+   * (Burlington / DD Discount), the Ship-To swaps automatically — but
+   * only on a brand transition, so the user's in-progress edits aren't
+   * silently overwritten on every render.
+   */
+  bolBrand: BrandKey;
   /**
    * Incremented after every Supabase write (save / delete). Components that
    * fetch PO records watch this in their useEffect deps so the list refreshes
@@ -71,6 +96,9 @@ interface ShipmentStore {
   // ── Label Format tab ──
   setFormat: (patch: Partial<LabelFormat>) => void;
 
+  // ── Burlington / DD Discount routing ──
+  setBurlington: (patch: Partial<BurlingtonShipment>) => void;
+
   // ── BOL tab ──
   setBol: (patch: Partial<BolForm>) => void;
   setBolOrders: (page: "p1Orders" | "p2Orders", orders: BolOrder[]) => void;
@@ -87,10 +115,29 @@ export const useShipmentStore = create<ShipmentStore>()(
       brandState: makeDefaultBrandState(),
       format: defaultFormat(),
       bol: defaultBolForm(),
+      bolBrand: "homegoods",
       dataVersion: 0,
       bumpDataVersion: () => set((s) => ({ dataVersion: s.dataVersion + 1 })),
 
-      setActiveBrand: (brand) => set({ activeBrand: brand }),
+      setActiveBrand: (brand) =>
+        set((s) => {
+          if (s.bolBrand === brand) return { activeBrand: brand };
+          // Brand transitioned — swap Ship-To to the new brand's defaults so
+          // the BOL tab is correct for the brand the user picked. Other BOL
+          // fields (Ship-From, carrier, BOL #, etc.) are left intact.
+          const def = defaultBolForm();
+          const shipTo = BRAND_SHIP_TO[brand] ?? {
+            st_name: def.st_name,
+            st_location: def.st_location,
+            st_address: def.st_address,
+            st_csz: def.st_csz,
+          };
+          return {
+            activeBrand: brand,
+            bolBrand: brand,
+            bol: { ...s.bol, ...shipTo },
+          };
+        }),
       setActiveTab: (tab) => set({ activeTab: tab }),
 
       current: () => get().brandState[get().activeBrand],
@@ -210,6 +257,18 @@ export const useShipmentStore = create<ShipmentStore>()(
           return { brandState: { ...s.brandState, [b]: fresh[b] } };
         }),
 
+      setBurlington: (patch) =>
+        set((s) => {
+          const st = s.brandState[s.activeBrand];
+          const current = st.burlington ?? defaultBurlingtonShipment();
+          return {
+            brandState: {
+              ...s.brandState,
+              [s.activeBrand]: { ...st, burlington: { ...current, ...patch } },
+            },
+          };
+        }),
+
       setFormat: (patch) => set((s) => ({ format: { ...s.format, ...patch } })),
 
       setBol: (patch) => set((s) => ({ bol: { ...s.bol, ...patch } })),
@@ -219,6 +278,7 @@ export const useShipmentStore = create<ShipmentStore>()(
       loadRecord: (rec) =>
         set((s) => ({
           activeBrand: rec.brand,
+          bolBrand: rec.brand,
           brandState: { ...s.brandState, [rec.brand]: rec.shipment_state },
           format: rec.label_format,
           bol: rec.bol_form,
@@ -227,10 +287,11 @@ export const useShipmentStore = create<ShipmentStore>()(
     {
       name: "quikt-shipment-store",
       // Persist everything so a refresh keeps the in-progress shipment.
-      version: 2,
+      version: 3,
       // v1 → v2: extended BrandKey with burlington / sierra / ddDiscount.
-      // Persisted state from v1 is missing those keys, so merge in the defaults
-      // to keep brandState[brand] safe for the new brands.
+      // v2 → v3: added the `burlington` field on ShipmentState for the
+      // line-item routing flow + BOL sync. Backfill it for the two brands
+      // that use it so the new fields exist on already-persisted state.
       migrate: (persisted, version) => {
         if (!persisted) return persisted;
         const p = persisted as Partial<ShipmentStore>;
@@ -240,6 +301,14 @@ export const useShipmentStore = create<ShipmentStore>()(
             BrandKey,
             ShipmentState
           >;
+        }
+        if (version < 3 && p.brandState) {
+          const bs = p.brandState;
+          (["burlington", "ddDiscount"] as BrandKey[]).forEach((b) => {
+            if (bs[b] && !bs[b].burlington) {
+              bs[b] = { ...bs[b], burlington: defaultBurlingtonShipment() };
+            }
+          });
         }
         return p;
       },

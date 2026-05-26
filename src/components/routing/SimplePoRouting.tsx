@@ -15,38 +15,16 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { listSkuMaster } from "@/lib/skuMaster";
-import { BRAND_CONFIG } from "@/lib/constants";
+import {
+  BRAND_CONFIG,
+  defaultBurlingtonShipment,
+  newBurlingtonLine,
+} from "@/lib/constants";
 import { saveSimplePoRecord } from "@/lib/history";
 import { useShipmentStore } from "@/store/useShipmentStore";
-import type { BrandKey, SkuMasterRow } from "@/lib/types";
+import type { BrandKey, BurlingtonLine, SkuMasterRow } from "@/lib/types";
 
-interface Line {
-  _id: string;
-  /** Per-row PO number — defaults to the header PO but editable per row. */
-  po: string;
-  product: string;
-  origQty: number | "";
-  finalQty: number | "";
-  /**
-   * Per-row Hi value. Auto-filled from the SKU Master's `pallet_ti` when the
-   * user picks a product, but stays editable so the user can override it for
-   * a one-off shipment without changing the catalogue.
-   */
-  hi: number | "";
-}
-
-const newLine = (): Line => ({
-  _id: Math.random().toString(36).slice(2),
-  po: "",
-  product: "",
-  origQty: "",
-  finalQty: "",
-  hi: "",
-});
-
-const DEFAULT_LINES = 7;
-const initLines = (n = DEFAULT_LINES): Line[] =>
-  Array.from({ length: n }, () => newLine());
+type Line = BurlingtonLine;
 
 function formatDate(iso: string): string {
   if (!iso) return "";
@@ -81,24 +59,49 @@ function fmtPct(n: number): string {
 export default function SimplePoRouting({ brand }: { brand: BrandKey }) {
   const brandLabel = BRAND_CONFIG[brand]?.label ?? brand;
 
-  // ── Header (one set of values shared across all lines) ──
-  const [poNumber, setPoNumber] = useState("");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
+  // ── Store-backed Burlington / DD Discount routing state ──
+  // Single source of truth in the Zustand store so the BOL tab can sync from
+  // the routing data and so History → "Open Routing" re-hydrates the form.
+  const burlington = useShipmentStore(
+    (s) => s.brandState[brand].burlington ?? defaultBurlingtonShipment(),
+  );
+  const setBurlington = useShipmentStore((s) => s.setBurlington);
 
-  // ── Pallet constants (Burlington / DD Discount use these to compute the
-  //    bottom-row totals — different from the per-row catalogue values). ──
-  const [palletCuFt, setPalletCuFt] = useState<number | "">(6.7);
-  const [palletWt, setPalletWt] = useState<number | "">(80);
-  const [maxPalletHeight, setMaxPalletHeight] = useState<number | "">(72);
+  const { headerPo: poNumber, startDate, endDate, lines, palletConstants } = burlington;
+  const palletCuFt = palletConstants.cuFt;
+  const palletWt = palletConstants.wt;
+  const maxPalletHeight = palletConstants.maxHeight;
 
-  // ── Line items ──
-  const [lines, setLines] = useState<Line[]>(() => initLines());
+  const setPoNumber = useCallback(
+    (v: string) => setBurlington({ headerPo: v }),
+    [setBurlington],
+  );
+  const setStartDate = useCallback(
+    (v: string) => setBurlington({ startDate: v }),
+    [setBurlington],
+  );
+  const setEndDate = useCallback(
+    (v: string) => setBurlington({ endDate: v }),
+    [setBurlington],
+  );
+  const setLines = useCallback(
+    (next: Line[]) => setBurlington({ lines: next }),
+    [setBurlington],
+  );
+  const patchPalletConstants = useCallback(
+    (patch: Partial<typeof palletConstants>) =>
+      setBurlington({ palletConstants: { ...palletConstants, ...patch } }),
+    [palletConstants, setBurlington],
+  );
+  const setPalletCuFt = (v: number) => patchPalletConstants({ cuFt: v });
+  const setPalletWt = (v: number) => patchPalletConstants({ wt: v });
+  const setMaxPalletHeight = (v: number) => patchPalletConstants({ maxHeight: v });
 
   // ── Submit state ──
   const [submitting, setSubmitting] = useState(false);
   const [submitMsg, setSubmitMsg] = useState<{ kind: "ok" | "err"; msg: string } | null>(null);
   const bumpDataVersion = useShipmentStore((s) => s.bumpDataVersion);
+  const bolFormFromStore = useShipmentStore((s) => s.bol);
 
   // ── SKU Master lookup ──
   const [skus, setSkus] = useState<SkuMasterRow[]>([]);
@@ -122,9 +125,15 @@ export default function SimplePoRouting({ brand }: { brand: BrandKey }) {
   // alone — header is the default, not a forced override.
   useEffect(() => {
     if (!poNumber) return;
-    setLines((rows) =>
-      rows.map((r) => (r.po.trim() === "" ? { ...r, po: poNumber } : r)),
+    const needsPatch = lines.some((r) => r.po.trim() === "");
+    if (!needsPatch) return;
+    setLines(
+      lines.map((r) => (r.po.trim() === "" ? { ...r, po: poNumber } : r)),
     );
+    // We intentionally do NOT include `lines` in deps — running this effect on
+    // every line edit would clobber a row's PO right after the user typed it.
+    // The header-PO drives the sync; line edits sync via `patchLine` directly.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [poNumber]);
 
   const skuByCode = useMemo(() => {
@@ -210,8 +219,8 @@ export default function SimplePoRouting({ brand }: { brand: BrandKey }) {
   }, [computed, maxPalletHeight, palletWt, palletCuFt]);
 
   function patchLine(id: string, patch: Partial<Line>) {
-    setLines((rows) =>
-      rows.map((r) => {
+    setLines(
+      lines.map((r) => {
         if (r._id !== id) return r;
         const next = { ...r, ...patch };
         // When the Product changes to a known SKU, auto-fill Hi from the
@@ -229,19 +238,16 @@ export default function SimplePoRouting({ brand }: { brand: BrandKey }) {
   }
 
   function addLine() {
-    setLines((rows) => [...rows, newLine()]);
+    setLines([...lines, newBurlingtonLine()]);
   }
 
   function removeLine(id: string) {
-    setLines((rows) => rows.filter((r) => r._id !== id));
+    setLines(lines.filter((r) => r._id !== id));
   }
 
   function resetAll() {
     if (!window.confirm("Clear the PO and all line items?")) return;
-    setPoNumber("");
-    setStartDate("");
-    setEndDate("");
-    setLines(initLines());
+    setBurlington(defaultBurlingtonShipment());
     setSubmitMsg(null);
   }
 
@@ -270,6 +276,7 @@ export default function SimplePoRouting({ brand }: { brand: BrandKey }) {
             maxHeight: nz(maxPalletHeight),
           },
           lines: filledLines.map((l) => ({
+            _id: l._id,
             po: (l.po || poNumber).trim(),
             product: l.product.trim().toUpperCase(),
             origQty: nz(l.origQty),
@@ -283,6 +290,8 @@ export default function SimplePoRouting({ brand }: { brand: BrandKey }) {
           cu: totals.cu,
           pallets: totals.pallets,
         },
+        // Carry whatever the user has set on the BOL tab so it survives recall.
+        bol: bolFormFromStore,
       });
       bumpDataVersion();
       setSubmitMsg({
@@ -597,11 +606,9 @@ export default function SimplePoRouting({ brand }: { brand: BrandKey }) {
                   type="number"
                   step="0.1"
                   min={0}
-                  value={palletCuFt}
+                  value={palletCuFt || ""}
                   onChange={(e) =>
-                    setPalletCuFt(
-                      e.target.value === "" ? "" : parseFloat(e.target.value) || 0,
-                    )
+                    setPalletCuFt(parseFloat(e.target.value) || 0)
                   }
                 />
               </td>
@@ -613,11 +620,9 @@ export default function SimplePoRouting({ brand }: { brand: BrandKey }) {
                   type="number"
                   step="1"
                   min={0}
-                  value={palletWt}
+                  value={palletWt || ""}
                   onChange={(e) =>
-                    setPalletWt(
-                      e.target.value === "" ? "" : parseFloat(e.target.value) || 0,
-                    )
+                    setPalletWt(parseFloat(e.target.value) || 0)
                   }
                 />
               </td>
@@ -629,11 +634,9 @@ export default function SimplePoRouting({ brand }: { brand: BrandKey }) {
                   type="number"
                   step="1"
                   min={0}
-                  value={maxPalletHeight}
+                  value={maxPalletHeight || ""}
                   onChange={(e) =>
-                    setMaxPalletHeight(
-                      e.target.value === "" ? "" : parseFloat(e.target.value) || 0,
-                    )
+                    setMaxPalletHeight(parseFloat(e.target.value) || 0)
                   }
                 />
               </td>

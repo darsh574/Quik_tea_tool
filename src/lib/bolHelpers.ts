@@ -4,7 +4,51 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { BOL_PREFIX, DEFAULT_P1, DEFAULT_P2 } from "./constants";
-import type { BolForm, BolOrder, BrandKey, SummaryData } from "./types";
+import type {
+  BolForm,
+  BolOrder,
+  BrandKey,
+  SummaryData,
+  BurlingtonShipment,
+} from "./types";
+
+/**
+ * Burlington's default Ship-To address (per the reference screenshot).
+ * Applied when the user syncs the BOL from a Burlington routing — the brand
+ * has a single canonical Ship-To, unlike HG/TJX/Marshalls which fan out to
+ * many DCs. Ship-From and other fields are intentionally left untouched.
+ */
+export const BURLINGTON_SHIP_TO = {
+  st_name: "Burlington Coat Factory",
+  st_location: "53_NJ",
+  st_address: "4287 US-130 SOUTH",
+  st_csz: "EDGEWATER PARK, NJ, 08010, US",
+} as const;
+
+/**
+ * Burlington / DD Discount sync — pulls only the fields we're confident about
+ * from the line-item routing. Everything else (carrier, BOL #, load ID, dates,
+ * authorisation, etc.) is left blank for the user to enter manually.
+ */
+export function syncBolFromBurlington(
+  burlington: BurlingtonShipment,
+  totals: { finalQty: number; weight: number; pallets: number },
+): Partial<BolForm> {
+  const po = burlington.headerPo.trim();
+  const palletsInt = Math.max(0, Math.round(totals.pallets));
+  const weightInt = Math.max(0, Math.round(totals.weight));
+  const cartons = Math.max(0, Math.round(totals.finalQty));
+
+  return {
+    ...BURLINGTON_SHIP_TO,
+    bol_po_number: po,
+    hu_qty: String(palletsInt),
+    hu_qty_p2: String(palletsInt),
+    hu_pkg_qty: String(cartons),
+    hu_weight: String(weightInt),
+    commodity: cartons > 0 ? `${cartons} Cartons of Instant Chai Tea Latte` : "",
+  };
+}
 
 /** The initial Bill of Lading form, matching the original tool's default inputs. */
 export function defaultBolForm(): BolForm {

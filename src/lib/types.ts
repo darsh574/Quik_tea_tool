@@ -120,13 +120,16 @@ export interface ShipmentState {
 
 /** One line in the Burlington / DD Discount routing table. */
 export interface BurlingtonLine {
+  /** Stable React key — survives store rehydration so input focus is preserved. */
+  _id: string;
   /** Per-row PO number (defaults to the header PO but editable per row). */
   po: string;
   product: string;
-  origQty: number;
-  finalQty: number;
+  /** `""` means the user hasn't entered a value yet (kept blank in the cell). */
+  origQty: number | "";
+  finalQty: number | "";
   /** Pallet `Ti` override for this row (catalogue value when blank). */
-  hi: number;
+  hi: number | "";
 }
 
 /** Pallet constants used to compute Burlington / DD Discount totals. */

@@ -4,7 +4,41 @@
 // research and Excel formulas. Every value here must match the original.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { BrandKey, DC, ShipmentState, BolOrder } from "./types";
+import type {
+  BrandKey,
+  DC,
+  ShipmentState,
+  BolOrder,
+  BurlingtonShipment,
+  BurlingtonLine,
+} from "./types";
+
+/** Fresh blank line item for the Burlington / DD Discount routing table. */
+export function newBurlingtonLine(): BurlingtonLine {
+  return {
+    _id: Math.random().toString(36).slice(2),
+    po: "",
+    product: "",
+    origQty: "",
+    finalQty: "",
+    hi: "",
+  };
+}
+
+/**
+ * Fresh Burlington / DD Discount routing snapshot. Used by both the store's
+ * `makeDefaultBrandState` initialiser and the SimplePoRouting reset action.
+ * Pallet constants default to the values from the customer's reference sheet.
+ */
+export function defaultBurlingtonShipment(): BurlingtonShipment {
+  return {
+    headerPo: "",
+    startDate: "",
+    endDate: "",
+    lines: Array.from({ length: 7 }, newBurlingtonLine),
+    palletConstants: { cuFt: 6.7, wt: 80, maxHeight: 72 },
+  };
+}
 
 // ── SPEC — 6"×4" landscape label, pixel-matched to the reference image ──
 export const SPEC = {
@@ -187,9 +221,9 @@ export function makeDefaultBrandState(): Record<BrandKey, ShipmentState> {
     },
     tjx: { products: [], dcs: [], qty: {}, qtyFinal: {}, qtyFinalTotal: {}, po: "", from: "Quikfoods Inc", skuMeta: {} },
     marshalls: { products: [], dcs: [], qty: {}, qtyFinal: {}, qtyFinalTotal: {}, po: "", from: "Quikfoods Inc", skuMeta: {} },
-    burlington: { products: [], dcs: [], qty: {}, qtyFinal: {}, qtyFinalTotal: {}, po: "", from: "Quikfoods Inc", skuMeta: {} },
+    burlington: { products: [], dcs: [], qty: {}, qtyFinal: {}, qtyFinalTotal: {}, po: "", from: "Quikfoods Inc", skuMeta: {}, burlington: defaultBurlingtonShipment() },
     sierra: { products: [], dcs: [], qty: {}, qtyFinal: {}, qtyFinalTotal: {}, po: "", from: "Quikfoods Inc", skuMeta: {} },
-    ddDiscount: { products: [], dcs: [], qty: {}, qtyFinal: {}, qtyFinalTotal: {}, po: "", from: "Quikfoods Inc", skuMeta: {} },
+    ddDiscount: { products: [], dcs: [], qty: {}, qtyFinal: {}, qtyFinalTotal: {}, po: "", from: "Quikfoods Inc", skuMeta: {}, burlington: defaultBurlingtonShipment() },
   };
 }
 

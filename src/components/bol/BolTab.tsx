@@ -1,15 +1,22 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useShipmentStore } from "@/store/useShipmentStore";
 import { computeSummary } from "@/lib/formulas";
 import { CARRIER_BOOK } from "@/lib/constants";
 import { buildBolPDF } from "@/lib/bolPdf";
-import { syncBolFromSummary, updateShipperInfoPO } from "@/lib/bolHelpers";
-import { savePoRecord } from "@/lib/history";
+import {
+  syncBolFromSummary,
+  syncBolFromBurlington,
+  updateShipperInfoPO,
+} from "@/lib/bolHelpers";
+import { savePoRecord, saveSimplePoRecord } from "@/lib/history";
 import { OrdersTable } from "@/components/bol/OrdersTable";
 import PoPicker from "@/components/PoPicker";
-import type { BolForm } from "@/lib/types";
+import type { BolForm, BrandKey } from "@/lib/types";
+
+/** Brands that use the line-item (Burlington / DD Discount) routing flow. */
+const SIMPLE_PO_BRANDS: BrandKey[] = ["burlington", "ddDiscount"];
 
 export default function BolTab() {
   const activeBrand = useShipmentStore((s) => s.activeBrand);
@@ -49,7 +56,21 @@ export default function BolTab() {
     setAutoSaveStatus("saving");
     autoSaveTimer.current = setTimeout(async () => {
       try {
-        await savePoRecord({ brand: activeBrand, shipmentState: st, format, bol });
+        if (SIMPLE_PO_BRANDS.includes(activeBrand) && st.burlington) {
+          await saveSimplePoRecord({
+            brand: activeBrand,
+            burlington: st.burlington,
+            totals: {
+              finalQty: burlingtonTotals?.finalQty ?? 0,
+              weight: burlingtonTotals?.weight ?? 0,
+              cu: 0,
+              pallets: burlingtonTotals?.pallets ?? 0,
+            },
+            bol,
+          });
+        } else {
+          await savePoRecord({ brand: activeBrand, shipmentState: st, format, bol });
+        }
         setLastSavedAt(new Date());
         setAutoSaveStatus("saved");
         bumpDataVersion();
@@ -97,7 +118,75 @@ export default function BolTab() {
     });
   }
 
+  /** Compute Burlington totals (mirrors the SimplePoRouting math). */
+  const burlingtonTotals = useMemo(() => {
+    const b = st.burlington;
+    if (!b) return null;
+    const { palletConstants, lines } = b;
+    let final = 0,
+      sumWeight = 0,
+      sumLayers = 0,
+      sumHeight = 0;
+    // NOTE: weight/cu ft per line need SKU master lookups, which BolTab doesn't
+    // load. The user's confirmed mappings are PO + pallets + total cartons.
+    // Total weight is computed from `finalQty × case_gross_wt_lb` — we don't
+    // have that here, so we fall back to (pallet wt × pallets) only when SKU
+    // weights aren't known. The Submit on the Routing tab persists the full
+    // totals to Supabase; this is just for an in-progress preview.
+    lines.forEach((l) => {
+      const f = typeof l.finalQty === "number" ? l.finalQty : 0;
+      const hi = typeof l.hi === "number" ? l.hi : 0;
+      final += f;
+      sumLayers += hi > 0 ? f / hi : 0;
+      sumHeight += 0; // unknown without SKU master
+    });
+    const maxH = palletConstants.maxHeight;
+    const pallets = maxH > 0 && sumHeight > 0 ? (sumLayers * sumHeight) / maxH : 0;
+    const weight = sumWeight + palletConstants.wt * pallets;
+    return { finalQty: final, weight, pallets };
+  }, [st]);
+
   async function handleSync() {
+    // ── Burlington / DD Discount: pull from the line-item routing snapshot.
+    if (SIMPLE_PO_BRANDS.includes(activeBrand)) {
+      const b = st.burlington;
+      if (!b || b.headerPo.trim() === "") {
+        flashToast("Fill the Burlington routing (header PO + at least one line) first.");
+        return;
+      }
+      const patch = syncBolFromBurlington(b, burlingtonTotals ?? { finalQty: 0, weight: 0, pallets: 0 });
+      setBol(patch);
+      skipNextAutoSave.current = true;
+      setAutoSaveOn(true);
+      setAutoSaveStatus("saving");
+      try {
+        await saveSimplePoRecord({
+          brand: activeBrand,
+          burlington: b,
+          totals: {
+            finalQty: burlingtonTotals?.finalQty ?? 0,
+            weight: burlingtonTotals?.weight ?? 0,
+            cu: 0,
+            pallets: burlingtonTotals?.pallets ?? 0,
+          },
+          bol: { ...bol, ...patch },
+        });
+        setLastSavedAt(new Date());
+        setAutoSaveStatus("saved");
+        bumpDataVersion();
+        flashToast("Synced from Burlington routing · auto-save is now ON.");
+      } catch (err) {
+        setAutoSaveStatus("error");
+        flashToast(
+          "Synced — but save failed: " +
+            (err instanceof Error ? err.message : "unknown error") +
+            ". Auto-save still on; will retry on next edit.",
+        );
+      }
+      return;
+    }
+
+    // ── HG / TJX / Marshalls: existing per-DC summary flow.
     const summary = computeSummary(st);
     if (!summary) {
       flashToast("Add products and DCs on the Routing tab first.");
@@ -133,7 +222,20 @@ export default function BolTab() {
   async function handleSubmit() {
     setSubmitting(true);
     try {
-      const rec = await savePoRecord({ brand: activeBrand, shipmentState: st, format, bol });
+      const rec =
+        SIMPLE_PO_BRANDS.includes(activeBrand) && st.burlington
+          ? await saveSimplePoRecord({
+              brand: activeBrand,
+              burlington: st.burlington,
+              totals: {
+                finalQty: burlingtonTotals?.finalQty ?? 0,
+                weight: burlingtonTotals?.weight ?? 0,
+                cu: 0,
+                pallets: burlingtonTotals?.pallets ?? 0,
+              },
+              bol,
+            })
+          : await savePoRecord({ brand: activeBrand, shipmentState: st, format, bol });
       setLastSavedAt(new Date());
       setAutoSaveStatus("saved");
       bumpDataVersion();
@@ -158,7 +260,21 @@ export default function BolTab() {
       doc.save("TJX_BOL_" + (bol.bol_number || "draft") + ".pdf");
       // Save the full shipment snapshot to history, keyed by PO.
       try {
-        await savePoRecord({ brand: activeBrand, shipmentState: st, format, bol });
+        if (SIMPLE_PO_BRANDS.includes(activeBrand) && st.burlington) {
+          await saveSimplePoRecord({
+            brand: activeBrand,
+            burlington: st.burlington,
+            totals: {
+              finalQty: burlingtonTotals?.finalQty ?? 0,
+              weight: burlingtonTotals?.weight ?? 0,
+              cu: 0,
+              pallets: burlingtonTotals?.pallets ?? 0,
+            },
+            bol,
+          });
+        } else {
+          await savePoRecord({ brand: activeBrand, shipmentState: st, format, bol });
+        }
         bumpDataVersion();
         flashToast("BOL generated and shipment saved to history.");
       } catch (err) {
