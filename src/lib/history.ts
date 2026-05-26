@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 import { computeSummary, poDigits } from "@/lib/formulas";
 import { defaultBolForm } from "@/lib/bolHelpers";
 import { defaultLabelFormat } from "@/lib/labelFormat";
+import { sierraToShipmentState } from "@/lib/sierraAdapter";
 import type {
   BrandKey,
   ShipmentState,
@@ -15,6 +16,7 @@ import type {
   BolForm,
   PoRecord,
   BurlingtonShipment,
+  SierraShipment,
 } from "@/lib/types";
 
 export interface SaveInput {
@@ -171,6 +173,110 @@ export async function saveSimplePoRecord({
     summary: null,
     label_total: totals.finalQty,
     total_pallets: Math.round(totals.pallets),
+    bol_number: bol?.bol_number || null,
+    created_by: user?.id ?? null,
+    created_by_username: username,
+  };
+
+  const { data, error } = await supabase
+    .from("po_records")
+    .upsert(row, { onConflict: "po_number,brand" })
+    .select()
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data as PoRecord;
+}
+
+/**
+ * Save a Sierra Trading Post routing snapshot. Mirrors `saveSimplePoRecord` /
+ * `savePoRecord` so the History tab can list and recall Sierra POs the same
+ * way as every other brand.
+ *
+ * Sierra data lives in `shipment_state.sierra` (the raw matrix the routing UI
+ * reads). We additionally synthesise the standard products/dcs/qty fields via
+ * `sierraToShipmentState` so the History row's expanded view and the label
+ * generator can read it without a Sierra-specific adapter at every read site.
+ */
+export interface SaveSierraInput {
+  brand: BrandKey;
+  sierra: SierraShipment;
+  bol?: BolForm;
+  format?: LabelFormat;
+}
+
+export async function saveSierraPoRecord({
+  brand,
+  sierra,
+  bol,
+  format,
+}: SaveSierraInput): Promise<PoRecord> {
+  const supabase = createClient();
+
+  const poNumber = (sierra.poNumber ?? "").trim();
+  if (!poNumber) {
+    throw new Error("No PO number set — fill the PO number above before submitting.");
+  }
+
+  const lines = Array.isArray(sierra.lines) ? sierra.lines : [];
+  const dcs = Array.isArray(sierra.dcs) ? sierra.dcs : [];
+
+  // Must have at least one product with a final-cases value on at least one DC.
+  const hasData = lines.some(
+    (l) =>
+      (l.product || "").trim() !== "" &&
+      dcs.some(
+        (d) =>
+          typeof l.final?.[d.num] === "number" &&
+          (l.final[d.num] as number) > 0,
+      ),
+  );
+  if (!hasData) {
+    throw new Error(
+      "Add at least one product with a final case count on a DC before submitting.",
+    );
+  }
+
+  // Synthesise standard ShipmentState so History / labels can read it.
+  const adapted = sierraToShipmentState(sierra);
+  const shipment_state: ShipmentState = {
+    ...adapted,
+    sierra,
+  };
+
+  // History column totals.
+  let labelTotal = 0;
+  let totalPallets = 0;
+  dcs.forEach((d) => {
+    let dcCases = 0;
+    lines.forEach((l) => {
+      const f =
+        typeof l.final?.[d.num] === "number" ? (l.final[d.num] as number) : 0;
+      dcCases += f;
+    });
+    labelTotal += dcCases;
+    if (dcCases > 0) totalPallets += 1;
+  });
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const username =
+    (user?.user_metadata?.username as string | undefined) ||
+    user?.email?.split("@")[0] ||
+    null;
+
+  const row = {
+    po_number: poNumber,
+    po_digits: poDigits(poNumber),
+    brand,
+    shipment_state,
+    label_format: format ?? defaultLabelFormat(),
+    bol_form: bol ?? defaultBolForm(),
+    summary: null,
+    label_total: labelTotal,
+    total_pallets: totalPallets,
     bol_number: bol?.bol_number || null,
     created_by: user?.id ?? null,
     created_by_username: username,

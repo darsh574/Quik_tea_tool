@@ -27,6 +27,7 @@ import {
   SIERRA_WEIGHT_BASES,
 } from "@/lib/constants";
 import { listSkuMaster } from "@/lib/skuMaster";
+import { saveSierraPoRecord } from "@/lib/history";
 import type {
   BrandKey,
   SierraDc,
@@ -63,10 +64,19 @@ export default function SierraRouting({ brand }: { brand: BrandKey }) {
 
   const stored = useShipmentStore((s) => s.brandState[brand].sierra);
   const setSierra = useShipmentStore((s) => s.setSierra);
+  const bolFromStore = useShipmentStore((s) => s.bol);
+  const formatFromStore = useShipmentStore((s) => s.format);
+  const bumpDataVersion = useShipmentStore((s) => s.bumpDataVersion);
 
   useEffect(() => {
     if (!stored) setSierra({});
   }, [stored, setSierra]);
+
+  // ── Submit state ──
+  const [submitting, setSubmitting] = useState(false);
+  const [submitMsg, setSubmitMsg] = useState<
+    { kind: "ok" | "err"; msg: string } | null
+  >(null);
 
   const sierra = stored ?? FALLBACK_SIERRA;
   const poNumber = sierra.poNumber ?? "";
@@ -242,6 +252,53 @@ export default function SierraRouting({ brand }: { brand: BrandKey }) {
   function resetAll() {
     if (!window.confirm("Clear the PO and all line items?")) return;
     setSierra(defaultSierraShipment());
+    setSubmitMsg(null);
+  }
+
+  /** Submit-eligibility: PO + at least one product/DC with final cases. */
+  const canSubmit = useMemo(() => {
+    if (poNumber.trim() === "") return false;
+    return lines.some(
+      (l) =>
+        (l.product || "").trim() !== "" &&
+        dcs.some(
+          (d) =>
+            typeof l.final?.[d.num] === "number" &&
+            (l.final[d.num] as number) > 0,
+        ),
+    );
+  }, [poNumber, lines, dcs]);
+
+  async function handleSubmit() {
+    setSubmitting(true);
+    setSubmitMsg(null);
+    try {
+      const rec = await saveSierraPoRecord({
+        brand,
+        sierra: {
+          poNumber: poNumber.trim(),
+          dcs,
+          lines: lines.map((l) => ({ ...l })),
+        },
+        bol: bolFromStore,
+        format: formatFromStore,
+      });
+      bumpDataVersion();
+      setSubmitMsg({
+        kind: "ok",
+        msg: `✓ PO ${rec.po_number} saved. It's now in History and ready for Label generation.`,
+      });
+      // Reset so the form is clean for the next PO. The submitted PO is
+      // still recallable from History.
+      setSierra(defaultSierraShipment());
+    } catch (err) {
+      setSubmitMsg({
+        kind: "err",
+        msg: "✗ " + (err instanceof Error ? err.message : "Could not save the PO."),
+      });
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -695,6 +752,52 @@ export default function SierraRouting({ brand }: { brand: BrandKey }) {
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* ── SUBMIT — save this Sierra PO to the shared list ── */}
+      <div className="qt-sierra-card">
+        <div className="qt-sierra-title">Submit Routing</div>
+        <div className="qt-sierra-sub" style={{ marginBottom: 14 }}>
+          Save this {brandLabel} PO into the shared <strong>PO list</strong>.
+          Once submitted, it&apos;ll appear on the <strong>History</strong> tab
+          and be available on the <strong>Label Generator</strong> for printing
+          carton labels.
+        </div>
+        <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+          <button
+            type="button"
+            className="qt-sierra-btn accent"
+            onClick={handleSubmit}
+            disabled={submitting || !canSubmit}
+            title={
+              canSubmit
+                ? "Save this PO to the shared list"
+                : "Set the PO number and enter at least one final-case value first"
+            }
+            style={{ padding: "10px 22px", fontSize: 13 }}
+          >
+            {submitting ? "Submitting…" : "✓ Submit & Save to PO List"}
+          </button>
+          {!canSubmit && (
+            <span style={{ fontSize: 12, color: "#a47712" }}>
+              {!poNumber.trim()
+                ? "Set the PO number above."
+                : "Enter at least one final case count for a product / DC."}
+            </span>
+          )}
+        </div>
+        {submitMsg && (
+          <div
+            className="qt-sierra-warn"
+            style={{
+              marginTop: 12,
+              background: submitMsg.kind === "ok" ? "#e8f6ee" : "#fdece6",
+              color: submitMsg.kind === "ok" ? "#1e7a4a" : "#c94628",
+            }}
+          >
+            {submitMsg.msg}
+          </div>
+        )}
       </div>
     </div>
   );
