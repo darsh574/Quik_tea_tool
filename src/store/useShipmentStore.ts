@@ -11,20 +11,8 @@ import {
   BRAND_CONFIG,
   defaultBurlingtonShipment,
 } from "@/lib/constants";
-import { defaultBolForm, BURLINGTON_SHIP_TO } from "@/lib/bolHelpers";
+import { defaultBolForm } from "@/lib/bolHelpers";
 import { poDigits } from "@/lib/formulas";
-
-/**
- * Brand-specific Ship-To defaults. When the active brand changes, the BOL
- * Ship-To swaps to match. Brands not listed here use the original TJX-style
- * defaults from `defaultBolForm()`.
- */
-const BRAND_SHIP_TO: Partial<
-  Record<BrandKey, { st_name: string; st_location: string; st_address: string; st_csz: string }>
-> = {
-  burlington: { ...BURLINGTON_SHIP_TO },
-  ddDiscount: { ...BURLINGTON_SHIP_TO },
-};
 import type {
   BrandKey,
   TabKey,
@@ -119,25 +107,11 @@ export const useShipmentStore = create<ShipmentStore>()(
       dataVersion: 0,
       bumpDataVersion: () => set((s) => ({ dataVersion: s.dataVersion + 1 })),
 
-      setActiveBrand: (brand) =>
-        set((s) => {
-          if (s.bolBrand === brand) return { activeBrand: brand };
-          // Brand transitioned — swap Ship-To to the new brand's defaults so
-          // the BOL tab is correct for the brand the user picked. Other BOL
-          // fields (Ship-From, carrier, BOL #, etc.) are left intact.
-          const def = defaultBolForm();
-          const shipTo = BRAND_SHIP_TO[brand] ?? {
-            st_name: def.st_name,
-            st_location: def.st_location,
-            st_address: def.st_address,
-            st_csz: def.st_csz,
-          };
-          return {
-            activeBrand: brand,
-            bolBrand: brand,
-            bol: { ...s.bol, ...shipTo },
-          };
-        }),
+      // Brand selection only changes `activeBrand` — the BOL form is left
+      // alone. Burlington / DD Discount Ship-To + routing totals are applied
+      // exclusively when the user clicks "↺ Sync from Summary" on the BOL
+      // tab, so nothing overwrites in-progress BOL edits silently.
+      setActiveBrand: (brand) => set({ activeBrand: brand, bolBrand: brand }),
       setActiveTab: (tab) => set({ activeTab: tab }),
 
       current: () => get().brandState[get().activeBrand],
