@@ -122,7 +122,10 @@ export default function BolTab() {
   const burlingtonTotals = useMemo(() => {
     const b = st.burlington;
     if (!b) return null;
-    const { palletConstants, lines } = b;
+    // Be defensive about the shape — legacy / partially-migrated records
+    // may lack `lines` or `palletConstants`.
+    const lines = Array.isArray(b.lines) ? b.lines : [];
+    const palletConstants = b.palletConstants ?? { cuFt: 0, wt: 0, maxHeight: 0 };
     let final = 0,
       sumWeight = 0,
       sumLayers = 0,

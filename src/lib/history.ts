@@ -111,17 +111,18 @@ export async function saveSimplePoRecord({
 }: SaveSimpleInput): Promise<PoRecord> {
   const supabase = createClient();
 
-  const poNumber = burlington.headerPo.trim();
+  const poNumber = (burlington.headerPo ?? "").trim();
   if (!poNumber) {
     throw new Error("No PO number set — fill the PO number above before submitting.");
   }
-  if (burlington.lines.length === 0) {
+  const burlLines = Array.isArray(burlington.lines) ? burlington.lines : [];
+  if (burlLines.length === 0) {
     throw new Error("No line items to save — add at least one line first.");
   }
 
   // Distinct product list for the History row's expanded view.
   const products = Array.from(
-    new Set(burlington.lines.map((l) => l.product).filter((p) => p)),
+    new Set(burlLines.map((l) => l.product).filter((p) => p)),
   );
 
   const shipment_state: ShipmentState = {

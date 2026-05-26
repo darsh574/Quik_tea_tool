@@ -26,6 +26,15 @@ import type { BrandKey, BurlingtonLine, SkuMasterRow } from "@/lib/types";
 
 type Line = BurlingtonLine;
 
+/**
+ * Module-level fallback used by the selector when the store hasn't yet been
+ * initialised with a `burlington` field. Stable reference (constructed once)
+ * so React's useSyncExternalStore snapshot stays consistent across renders.
+ * The component's mount-time `useEffect` writes a real default into the store,
+ * after which this fallback is no longer hit.
+ */
+const FALLBACK_BURLINGTON = defaultBurlingtonShipment();
+
 function formatDate(iso: string): string {
   if (!iso) return "";
   const d = new Date(iso);
@@ -62,12 +71,42 @@ export default function SimplePoRouting({ brand }: { brand: BrandKey }) {
   // ── Store-backed Burlington / DD Discount routing state ──
   // Single source of truth in the Zustand store so the BOL tab can sync from
   // the routing data and so History → "Open Routing" re-hydrates the form.
-  const burlington = useShipmentStore(
-    (s) => s.brandState[brand].burlington ?? defaultBurlingtonShipment(),
+  //
+  // CRITICAL: this selector must return a stable reference when the underlying
+  // field hasn't changed. Returning `?? defaultBurlingtonShipment()` inline
+  // would create a fresh object on every call → React's useSyncExternalStore
+  // sees a mismatched snapshot and triggers an infinite render loop. Read the
+  // raw value; the useEffect below initialises it if missing (rare — happens
+  // only if a legacy save replaces brandState with a record lacking the field).
+  const storedBurlington = useShipmentStore(
+    (s) => s.brandState[brand].burlington,
   );
   const setBurlington = useShipmentStore((s) => s.setBurlington);
 
-  const { headerPo: poNumber, startDate, endDate, lines, palletConstants } = burlington;
+  useEffect(() => {
+    if (!storedBurlington) {
+      setBurlington({});
+    }
+  }, [storedBurlington, setBurlington]);
+
+  // Stable fallback so the first render before initialisation doesn't crash on
+  // destructuring. The useEffect above writes the real defaults into the store
+  // on the next tick — `lines` will then re-render with the persisted shape.
+  const burlington = storedBurlington ?? FALLBACK_BURLINGTON;
+
+  // Be defensive against partially-formed legacy data — fields can be missing
+  // if a record was saved before the current schema settled.
+  const poNumber = burlington.headerPo ?? "";
+  const startDate = burlington.startDate ?? "";
+  const endDate = burlington.endDate ?? "";
+  // Memoised so `lines` keeps a stable reference unless the underlying array
+  // truly changes — downstream useMemo deps depend on this.
+  const lines = useMemo(
+    () => (Array.isArray(burlington.lines) ? burlington.lines : []),
+    [burlington.lines],
+  );
+  const palletConstants =
+    burlington.palletConstants ?? FALLBACK_BURLINGTON.palletConstants;
   const palletCuFt = palletConstants.cuFt;
   const palletWt = palletConstants.wt;
   const maxPalletHeight = palletConstants.maxHeight;
