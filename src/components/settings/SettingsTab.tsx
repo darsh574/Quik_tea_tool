@@ -30,7 +30,7 @@ export default function SettingsTab() {
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
 
   // Create-user form state
-  const [newUsername, setNewUsername] = useState("");
+  const [newEmail, setNewEmail] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [newRole, setNewRole] = useState<UserRole>("operator");
   const [newPerms, setNewPerms] = useState<Permissions>(defaultOperatorPermissions());
@@ -73,7 +73,7 @@ export default function SettingsTab() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          username: newUsername,
+          email: newEmail,
           password: newPassword,
           role: newRole,
           permissions: newRole === "operator" ? newPerms : undefined,
@@ -81,8 +81,8 @@ export default function SettingsTab() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Failed to create user.");
-      flash("ok", `✓ User “${newUsername}” created.`);
-      setNewUsername("");
+      flash("ok", `✓ User “${newEmail}” created.`);
+      setNewEmail("");
       setNewPassword("");
       setNewRole("operator");
       setNewPerms(defaultOperatorPermissions());
@@ -311,7 +311,8 @@ export default function SettingsTab() {
           <div>
             <div className="qt-settings-title">Create a new user</div>
             <div className="qt-settings-sub">
-              Sub-level users log in with the username and password you set here. Email is generated automatically (username@quikt.local).
+              Sub-level users log in with the email and password you set here.
+              Accounts are created pre-confirmed, so no verification email is sent.
             </div>
           </div>
         </div>
@@ -321,12 +322,12 @@ export default function SettingsTab() {
         <form onSubmit={handleCreate}>
           <div className="qt-form-row">
             <div className="qt-form-field">
-              <label>Username</label>
+              <label>Email</label>
               <input
-                value={newUsername}
-                onChange={(e) => setNewUsername(e.target.value.toLowerCase())}
-                placeholder="e.g. priya"
-                pattern="[a-z0-9._-]{2,32}"
+                type="email"
+                value={newEmail}
+                onChange={(e) => setNewEmail(e.target.value.toLowerCase())}
+                placeholder="e.g. priya@hovers.in"
                 required
                 autoComplete="off"
               />

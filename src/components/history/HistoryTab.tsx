@@ -1,13 +1,21 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { searchPoRecords, deletePoRecord } from "@/lib/history";
 import { useShipmentStore } from "@/store/useShipmentStore";
 import { useCurrentUser } from "@/components/UserContext";
 import { BRAND_CONFIG } from "@/lib/constants";
 import { generateLabelZip, downloadBlob } from "@/lib/labelPdf";
 import { buildBolPDF } from "@/lib/bolPdf";
+import {
+  exportPoToWorkbook,
+  exportPoListToWorkbook,
+  downloadWorkbook,
+} from "@/lib/historyExcel";
 import type { PoRecord, TabKey } from "@/lib/types";
+
+type SortKey = "updated_at" | "created_at" | "po_number" | "brand" | "label_total";
+type SortDir = "asc" | "desc";
 
 export default function HistoryTab() {
   const loadRecord = useShipmentStore((s) => s.loadRecord);
@@ -24,6 +32,10 @@ export default function HistoryTab() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [busy, setBusy] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [sortKey, setSortKey] = useState<SortKey>("updated_at");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
   const runSearch = useCallback(async (q: string) => {
     setLoading(true);
@@ -84,6 +96,39 @@ export default function HistoryTab() {
     doc.save("TJX_BOL_" + (rec.bol_form.bol_number || rec.po_number) + ".pdf");
   }
 
+  function exportOne(rec: PoRecord) {
+    const wb = exportPoToWorkbook(rec);
+    downloadWorkbook(wb, `PO_${rec.po_number}_${rec.brand}_history.xlsx`);
+  }
+
+  function exportAll() {
+    const wb = exportPoListToWorkbook(visibleRecords);
+    const ts = new Date().toISOString().slice(0, 10);
+    downloadWorkbook(wb, `PO_history_${ts}.xlsx`);
+  }
+
+  /** Date-filtered + sorted view of the records list. Applied client-side
+   *  so it works against whatever Supabase already returned for the search. */
+  const visibleRecords = useMemo(() => {
+    const fromMs = dateFrom ? new Date(dateFrom + "T00:00:00").getTime() : 0;
+    const toMs = dateTo ? new Date(dateTo + "T23:59:59").getTime() : Infinity;
+    const inRange = (iso?: string) => {
+      if (!iso) return true;
+      const t = new Date(iso).getTime();
+      return t >= fromMs && t <= toMs;
+    };
+    const filtered = records.filter((r) => inRange(r.created_at || r.updated_at));
+    const dir = sortDir === "asc" ? 1 : -1;
+    return [...filtered].sort((a, b) => {
+      const va = (a as unknown as Record<string, unknown>)[sortKey];
+      const vb = (b as unknown as Record<string, unknown>)[sortKey];
+      if (sortKey === "label_total") {
+        return dir * ((Number(va) || 0) - (Number(vb) || 0));
+      }
+      return dir * String(va ?? "").localeCompare(String(vb ?? ""));
+    });
+  }, [records, sortKey, sortDir, dateFrom, dateTo]);
+
   return (
     <div className="card first last">
       <div className="section-title">PO History — search saved shipments</div>
@@ -140,6 +185,95 @@ export default function HistoryTab() {
         )}
       </form>
 
+      {/* ── Filter / sort / export-all toolbar ── */}
+      {!loading && records.length > 0 && (
+        <div
+          style={{
+            display: "flex",
+            gap: 10,
+            alignItems: "center",
+            flexWrap: "wrap",
+            marginBottom: 14,
+            padding: "10px 12px",
+            background: "var(--cream)",
+            border: "1px solid var(--border)",
+            borderRadius: 8,
+            fontSize: 12,
+          }}
+        >
+          <strong style={{ color: "#5a6370", letterSpacing: 0.3 }}>Filter / Sort:</strong>
+          <label>
+            From{" "}
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              style={{ padding: 4, border: "1px solid var(--border)", borderRadius: 6 }}
+            />
+          </label>
+          <label>
+            To{" "}
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              style={{ padding: 4, border: "1px solid var(--border)", borderRadius: 6 }}
+            />
+          </label>
+          <label>
+            Sort by{" "}
+            <select
+              value={sortKey}
+              onChange={(e) => setSortKey(e.target.value as SortKey)}
+              style={{ padding: 4, border: "1px solid var(--border)", borderRadius: 6 }}
+            >
+              <option value="updated_at">Updated</option>
+              <option value="created_at">Generated</option>
+              <option value="po_number">PO Number</option>
+              <option value="brand">Brand</option>
+              <option value="label_total">Labels</option>
+            </select>
+          </label>
+          <label>
+            Order{" "}
+            <select
+              value={sortDir}
+              onChange={(e) => setSortDir(e.target.value as SortDir)}
+              style={{ padding: 4, border: "1px solid var(--border)", borderRadius: 6 }}
+            >
+              <option value="desc">Newest first</option>
+              <option value="asc">Oldest first</option>
+            </select>
+          </label>
+          {(dateFrom || dateTo) && (
+            <button
+              type="button"
+              className="btn-sm"
+              onClick={() => {
+                setDateFrom("");
+                setDateTo("");
+              }}
+              style={{ padding: "5px 10px" }}
+            >
+              Clear dates
+            </button>
+          )}
+          <span style={{ marginLeft: "auto", color: "#888" }}>
+            {visibleRecords.length} of {records.length} shown
+          </span>
+          <button
+            type="button"
+            className="btn-sm"
+            onClick={exportAll}
+            disabled={visibleRecords.length === 0}
+            style={{ padding: "6px 14px", background: "#1e7a4a", color: "#fff" }}
+            title="Download the filtered list as an Excel workbook"
+          >
+            ⬇ Export to Excel
+          </button>
+        </div>
+      )}
+
       {error && <div className="upload-status err">{error}</div>}
       {loading && <div className="empty-state">Loading…</div>}
 
@@ -150,7 +284,14 @@ export default function HistoryTab() {
         </div>
       )}
 
-      {!loading && records.length > 0 && (
+      {!loading && records.length > 0 && visibleRecords.length === 0 && (
+        <div className="empty-state">
+          No POs match the current date range. Clear the date filter to see all{" "}
+          {records.length} records.
+        </div>
+      )}
+
+      {!loading && visibleRecords.length > 0 && (
         <div className="table-wrap">
           <table>
             <thead>
@@ -167,7 +308,7 @@ export default function HistoryTab() {
               </tr>
             </thead>
             <tbody>
-              {records.map((rec) => {
+              {visibleRecords.map((rec) => {
                 const id = rec.id || rec.po_number;
                 const open = openId === id;
                 return (
@@ -183,6 +324,7 @@ export default function HistoryTab() {
                     onDownloadBol={() => downloadBol(rec)}
                     onEditBol={() => loadIntoWorkspace(rec, "bol")}
                     onOpenRouting={() => loadIntoWorkspace(rec, "routing")}
+                    onExportExcel={() => exportOne(rec)}
                     onDelete={() => handleDelete(rec)}
                   />
                 );
@@ -206,6 +348,7 @@ function RecordRow({
   onDownloadBol,
   onEditBol,
   onOpenRouting,
+  onExportExcel,
   onDelete,
 }: {
   rec: PoRecord;
@@ -218,6 +361,7 @@ function RecordRow({
   onDownloadBol: () => void;
   onEditBol: () => void;
   onOpenRouting: () => void;
+  onExportExcel: () => void;
   onDelete: () => void;
 }) {
   const updated = rec.updated_at ? new Date(rec.updated_at).toLocaleString() : "—";
@@ -281,6 +425,14 @@ function RecordRow({
               </button>
               <button className="btn-sm" onClick={onOpenRouting}>
                 ↗ Open full shipment (Routing)
+              </button>
+              <button
+                className="btn-sm"
+                onClick={onExportExcel}
+                style={{ background: "#1e7a4a", color: "#fff" }}
+                title="Download this PO's details as an Excel workbook"
+              >
+                ⬇ Excel
               </button>
               {canDelete && (
                 <button

@@ -21,6 +21,10 @@ function emailFromUsername(username: string) {
   return `${username.trim().toLowerCase()}@${SYNTHETIC_DOMAIN}`;
 }
 
+/** Loose-but-strict email pattern — rejects obviously invalid input but
+ *  doesn't fight with edge-case but valid RFC addresses. */
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 interface PublicUser {
   id: string;
   username: string;
@@ -80,7 +84,8 @@ export async function POST(req: Request) {
   if (!gate.ok) return gate.response;
 
   let body: {
-    username?: string;
+    email?: string;
+    username?: string; // legacy — still accepted as a fallback
     password?: string;
     role?: string;
     permissions?: Partial<Permissions>;
@@ -91,13 +96,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
   }
 
-  const username = (body.username ?? "").trim().toLowerCase();
+  const emailInput = (body.email ?? "").trim().toLowerCase();
+  // Username-based fallback for older callers — synthesised to email.
+  const usernameInput = (body.username ?? "").trim().toLowerCase();
+  const email = emailInput || (usernameInput ? emailFromUsername(usernameInput) : "");
   const password = body.password ?? "";
   const role = readRole(body.role);
 
-  if (!/^[a-z0-9._-]{2,32}$/.test(username)) {
+  if (!EMAIL_RE.test(email)) {
     return NextResponse.json(
-      { error: "Username must be 2–32 characters, lowercase letters, digits, dot, underscore or dash." },
+      { error: "A valid email address is required." },
       { status: 400 },
     );
   }
@@ -113,13 +121,23 @@ export async function POST(req: Request) {
       ? undefined
       : { ...defaultOperatorPermissions(), ...(body.permissions ?? {}) };
 
+  // Display-name in metadata defaults to the local-part of the email (so
+  // existing UI that reads user_metadata.username keeps showing something
+  // sensible — e.g. "priya@hovers.in" → "priya").
+  const displayName =
+    usernameInput || (email.split("@")[0] || "").replace(/[^a-z0-9._-]/g, "");
+
   try {
     const supabase = getAdminClient();
     const { data, error } = await supabase.auth.admin.createUser({
-      email: emailFromUsername(username),
+      email,
       password,
       email_confirm: true,
-      user_metadata: { username, role, ...(permissions ? { permissions } : {}) },
+      user_metadata: {
+        username: displayName,
+        role,
+        ...(permissions ? { permissions } : {}),
+      },
     });
     if (error) throw error;
     if (!data.user) throw new Error("User was not returned by Supabase.");

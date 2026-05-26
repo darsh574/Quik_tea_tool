@@ -4,13 +4,15 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
-// Internal tool: users sign in with a short username. We map it to a Supabase
-// auth email (admin -> admin@quikt.local). Typing a full email also works.
+// Users sign in with their full email. Verification is never required —
+// admins create accounts pre-confirmed from the Settings tab. Legacy
+// usernames (e.g. "admin") still work and get appended with the synthetic
+// domain so existing accounts created with the old flow keep logging in.
 const EMAIL_DOMAIN = "quikt.local";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [username, setUsername] = useState("admin");
+  const [email, setEmail] = useState("admin@quikt.local");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -20,13 +22,14 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
     const supabase = createClient();
-    const email = username.includes("@") ? username.trim() : `${username.trim()}@${EMAIL_DOMAIN}`;
+    const value = email.trim();
+    const fullEmail = value.includes("@") ? value : `${value}@${EMAIL_DOMAIN}`;
     const { error: signInError } = await supabase.auth.signInWithPassword({
-      email,
+      email: fullEmail,
       password,
     });
     if (signInError) {
-      setError(signInError.message || "Invalid username or password.");
+      setError(signInError.message || "Invalid email or password.");
       setLoading(false);
       return;
     }
@@ -75,11 +78,13 @@ export default function LoginPage() {
 
         <form onSubmit={handleSubmit} style={{ padding: "26px 32px", display: "flex", flexDirection: "column", gap: 16 }}>
           <div className="field">
-            <label>Username</label>
+            <label>Email</label>
             <input
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              autoComplete="username"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+              placeholder="you@company.com"
               required
             />
           </div>
