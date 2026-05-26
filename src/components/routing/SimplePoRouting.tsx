@@ -335,8 +335,11 @@ export default function SimplePoRouting({ brand }: { brand: BrandKey }) {
       bumpDataVersion();
       setSubmitMsg({
         kind: "ok",
-        msg: `✓ PO ${rec.po_number} saved to the PO list. It's now searchable from History.`,
+        msg: `✓ PO ${rec.po_number} saved to the PO list. Routing cleared — ready for the next PO.`,
       });
+      // Reset the routing form to defaults so the user can enter the next PO
+      // without manually clicking Reset. The submitted PO stays in History.
+      setBurlington(defaultBurlingtonShipment());
     } catch (err) {
       setSubmitMsg({
         kind: "err",
