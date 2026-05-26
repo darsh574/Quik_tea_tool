@@ -159,21 +159,18 @@ export default function SimplePoRouting({ brand }: { brand: BrandKey }) {
     loadSkus();
   }, [loadSkus]);
 
-  // Header PO fills in any row that hasn't been overridden yet (empty PO).
-  // Rows that the user has explicitly edited to something different are left
-  // alone — header is the default, not a forced override.
-  useEffect(() => {
-    if (!poNumber) return;
-    const needsPatch = lines.some((r) => r.po.trim() === "");
-    if (!needsPatch) return;
-    setLines(
-      lines.map((r) => (r.po.trim() === "" ? { ...r, po: poNumber } : r)),
-    );
-    // We intentionally do NOT include `lines` in deps — running this effect on
-    // every line edit would clobber a row's PO right after the user typed it.
-    // The header-PO drives the sync; line edits sync via `patchLine` directly.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [poNumber]);
+  // Per-row suffix (the DC number) — read with a backward-compat fallback for
+  // records saved before the `suffix` field existed: derive from the legacy
+  // `po` by taking the trailing 2 chars.
+  const effectiveSuffix = useCallback(
+    (l: Line) => l.suffix ?? (l.po ? l.po.slice(-2) : ""),
+    [],
+  );
+  /** Computed full PO for a line: master PO (header) + per-row suffix. */
+  const effectivePo = useCallback(
+    (l: Line) => poNumber + effectiveSuffix(l),
+    [poNumber, effectiveSuffix],
+  );
 
   const skuByCode = useMemo(() => {
     const m = new Map<string, SkuMasterRow>();
@@ -181,9 +178,8 @@ export default function SimplePoRouting({ brand }: { brand: BrandKey }) {
     return m;
   }, [skus]);
 
-  // ── Derived from PO Number ──
-  const masterPo = poNumber.length >= 2 ? poNumber.slice(0, -2) : "";
-  const suffix = poNumber.length >= 2 ? poNumber.slice(-2) : "";
+  // ── Header PO is the Master PO. Each row's full PO is derived as
+  //    Master + the row's editable Suffix (typically the DC number). ──
 
   // ── Compute per-row derived values ──
   const computed = useMemo(() => {
@@ -314,14 +310,20 @@ export default function SimplePoRouting({ brand }: { brand: BrandKey }) {
             wt: nz(palletWt),
             maxHeight: nz(maxPalletHeight),
           },
-          lines: filledLines.map((l) => ({
-            _id: l._id,
-            po: (l.po || poNumber).trim(),
-            product: l.product.trim().toUpperCase(),
-            origQty: nz(l.origQty),
-            finalQty: nz(l.finalQty),
-            hi: nz(l.hi),
-          })),
+          lines: filledLines.map((l) => {
+            const suffix = effectiveSuffix(l);
+            return {
+              _id: l._id,
+              suffix,
+              // Persist the derived full PO too for back-compat with older
+              // readers that still look at `po` directly.
+              po: (poNumber + suffix).trim(),
+              product: l.product.trim().toUpperCase(),
+              origQty: nz(l.origQty),
+              finalQty: nz(l.finalQty),
+              hi: nz(l.hi),
+            };
+          }),
         },
         totals: {
           finalQty: totals.final,
@@ -597,7 +599,7 @@ export default function SimplePoRouting({ brand }: { brand: BrandKey }) {
 
         <div className="qt-simple-form">
           <div className="qt-simple-field">
-            <label>PO No.</label>
+            <label>Master PO #</label>
             <input
               value={poNumber}
               onChange={(e) => setPoNumber(e.target.value)}
@@ -624,10 +626,8 @@ export default function SimplePoRouting({ brand }: { brand: BrandKey }) {
 
         <div className="qt-simple-derived">
           <span>
-            Master PO #: <strong>{masterPo || "—"}</strong>
-          </span>
-          <span>
-            Suffix: <strong>{suffix || "—"}</strong>
+            Each row&apos;s <strong>PO No.</strong> = Master PO + Suffix · edit the
+            Suffix column to set a different DC per row.
           </span>
         </div>
       </div>
@@ -736,21 +736,28 @@ export default function SimplePoRouting({ brand }: { brand: BrandKey }) {
                   <tr key={line._id}>
                     <td style={{ color: "#888", fontWeight: 600 }}>{idx + 1}</td>
 
-                    <td className={line.po ? "manual po-cell" : "manual-empty"}>
+                    {/* PO No. = Master + Suffix — read-only, auto-derived */}
+                    <td
+                      className={
+                        poNumber || effectiveSuffix(line) ? "derived po-cell" : "derived-mute"
+                      }
+                    >
+                      {effectivePo(line) || "—"}
+                    </td>
+                    {/* Master PO = the header PO, mirrored on every row */}
+                    <td className={poNumber ? "derived" : "derived-mute"}>
+                      {poNumber || "—"}
+                    </td>
+                    {/* Suffix is editable — typically the DC number */}
+                    <td className={effectiveSuffix(line) ? "manual" : "manual-empty"}>
                       <input
-                        value={line.po}
+                        value={effectiveSuffix(line)}
                         onChange={(e) =>
-                          patchLine(line._id, { po: e.target.value })
+                          patchLine(line._id, { suffix: e.target.value })
                         }
-                        placeholder={poNumber || "—"}
-                        title="Editable per row — defaults to the header PO above"
+                        placeholder="DC #"
+                        title="Editable — typically the DC number. PO No. = Master PO + Suffix."
                       />
-                    </td>
-                    <td className={line.po.length >= 2 ? "derived" : "derived-mute"}>
-                      {line.po.length >= 2 ? line.po.slice(0, -2) : "—"}
-                    </td>
-                    <td className={line.po.length >= 2 ? "derived" : "derived-mute"}>
-                      {line.po.length >= 2 ? line.po.slice(-2) : "—"}
                     </td>
                     <td className={startDate ? "derived" : "derived-mute"}>
                       {formatDate(startDate) || "—"}

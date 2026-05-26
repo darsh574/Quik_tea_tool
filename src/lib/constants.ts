@@ -17,7 +17,7 @@ import type {
 export function newBurlingtonLine(): BurlingtonLine {
   return {
     _id: Math.random().toString(36).slice(2),
-    po: "",
+    suffix: "",
     product: "",
     origQty: "",
     finalQty: "",

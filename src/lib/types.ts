@@ -122,8 +122,19 @@ export interface ShipmentState {
 export interface BurlingtonLine {
   /** Stable React key — survives store rehydration so input focus is preserved. */
   _id: string;
-  /** Per-row PO number (defaults to the header PO but editable per row). */
-  po: string;
+  /**
+   * Per-row suffix (typically the DC number). Combined with the burlington
+   * record's `headerPo` (the Master PO) to produce the line's full PO:
+   * `effective_po = headerPo + suffix`. Editable per row.
+   */
+  suffix: string;
+  /**
+   * Legacy/computed full PO (Master + Suffix). Kept for backward compatibility
+   * with records saved before `suffix` existed — old records have `po` only,
+   * so the component derives `suffix = po.slice(-2)` on load. New saves write
+   * both fields so older code paths keep working.
+   */
+  po?: string;
   product: string;
   /** `""` means the user hasn't entered a value yet (kept blank in the cell). */
   origQty: number | "";
