@@ -1,13 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useShipmentStore } from "@/store/useShipmentStore";
 import { BRAND_CONFIG, SPEC } from "@/lib/constants";
-import { buildLabelElements } from "@/lib/formulas";
+import { buildLabelElements, buildLabelElementsDdDiscount } from "@/lib/formulas";
 import { generateLabelZip, countLabelPdfs, downloadBlob } from "@/lib/labelPdf";
 import { burlingtonToShipmentState } from "@/lib/burlingtonAdapter";
+import { listSkuMaster } from "@/lib/skuMaster";
 import PoPicker from "@/components/PoPicker";
-import type { BrandKey, LabelFormat } from "@/lib/types";
+import type { BrandKey, LabelFormat, SkuMasterRow } from "@/lib/types";
 
 const FIELD_LABELS: { key: keyof LabelFormat; label: string; type?: "select" }[] = [
   { key: "dept", label: "Dept suffix" },
@@ -52,12 +53,32 @@ export default function LabelsTab() {
       return burlingtonToShipmentState(
         st.burlington,
         BRAND_CONFIG[activeBrand].defaultDCName,
+        activeBrand,
       );
     }
     return st;
   }, [activeBrand, st]);
 
   const labelsDisabled = LABEL_DISABLED_BRANDS.includes(activeBrand);
+  const useDdLayout = ADAPTER_BRANDS.includes(activeBrand);
+
+  // ── SKU Master lookup (only needed for DD Discount labels). ──
+  const [skus, setSkus] = useState<SkuMasterRow[]>([]);
+  const loadSkus = useCallback(async () => {
+    try {
+      setSkus(await listSkuMaster());
+    } catch {
+      setSkus([]);
+    }
+  }, []);
+  useEffect(() => {
+    if (useDdLayout) loadSkus();
+  }, [useDdLayout, loadSkus]);
+  const skuLookup = useMemo(() => {
+    const m = new Map<string, SkuMasterRow>();
+    skus.forEach((s) => m.set((s.item_code || "").toUpperCase().trim(), s));
+    return m;
+  }, [skus]);
 
   // ── Live preview — mirrors updatePreview() ──
   const previewEls = useMemo(() => {
@@ -74,8 +95,14 @@ export default function LabelsTab() {
         ? effectiveSt.qty[prod][dc.num]
         : 5;
     const from = effectiveSt.from || "Quikfoods Inc";
+    if (useDdLayout) {
+      // Reconstruct the full per-line PO for the preview: master + suffix.
+      const fullPo = effectiveSt.po + (dc.poPrefix || dc.num);
+      const sku = skuLookup.get(prod.toUpperCase().trim());
+      return buildLabelElementsDdDiscount(from, dc, fullPo, q, 1, sku);
+    }
     return buildLabelElements(from, dc, effectiveSt.po, prod, q, 1, format);
-  }, [activeBrand, effectiveSt, format]);
+  }, [activeBrand, effectiveSt, format, useDdLayout, skuLookup]);
 
   // ── Generate summary — mirrors updateSummary() ──
   const genSummary = useMemo(() => {
@@ -114,9 +141,17 @@ export default function LabelsTab() {
       return;
     }
     setProgress({ pct: 0, label: "Generating…" });
-    const { blob, filename } = await generateLabelZip(activeBrand, effectiveSt, format, (d, t, pct) => {
-      setProgress({ pct, label: `Generating… ${d} of ${t} PDFs (${pct}%)` });
-    });
+    const { blob, filename } = await generateLabelZip(
+      activeBrand,
+      effectiveSt,
+      format,
+      (d, t, pct) => {
+        setProgress({ pct, label: `Generating… ${d} of ${t} PDFs (${pct}%)` });
+      },
+      // DD Discount labels pull Vendor Style # / case pack / item desc /
+      // unit weight from the SKU Master; HG / TJX / Marshalls ignore this.
+      useDdLayout ? skuLookup : undefined,
+    );
     setProgress({ pct: 100, label: "Compressing ZIP…" });
     downloadBlob(blob, filename);
     setProgress(null);

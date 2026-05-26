@@ -8,7 +8,10 @@ import { jsPDF } from "jspdf";
 import JSZip from "jszip";
 import { SPEC, BRAND_CONFIG } from "./constants";
 import { poDigits } from "./formulas";
-import type { BrandKey, ShipmentState, LabelFormat } from "./types";
+import type { BrandKey, ShipmentState, LabelFormat, SkuMasterRow } from "./types";
+
+/** Brands that use the DD Discount label template (different from HG/TJX/MAR). */
+const DD_LABEL_BRANDS: BrandKey[] = ["ddDiscount"];
 
 /** Truncate text with an ellipsis so it never overflows maxW (jsPDF measure). */
 function safeText(doc: jsPDF, text: string, x: number, y: number, maxW?: number): void {
@@ -44,12 +47,18 @@ export interface LabelZipResult {
 /**
  * Generate the full label ZIP for a brand state + label format.
  * `onProgress(done, total, pct)` is called after each PDF is added.
+ *
+ * `skuLookup` is only consulted for DD Discount labels (Vendor Style # / case
+ * pack / item description / unit weight come from the SKU Master). The HG /
+ * TJX / Marshalls flow ignores it entirely — those labels are driven by the
+ * editable LabelFormat fields as before.
  */
 export async function generateLabelZip(
   activeBrand: BrandKey,
   st: ShipmentState,
   f: LabelFormat,
-  onProgress?: (done: number, total: number, pct: number) => void
+  onProgress?: (done: number, total: number, pct: number) => void,
+  skuLookup?: Map<string, SkuMasterRow>,
 ): Promise<LabelZipResult> {
   const po = (st.po || "").trim() || "PO";
   const from = (st.from || "").trim() || "Quikfoods Inc";
@@ -77,6 +86,11 @@ export async function generateLabelZip(
 
       const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: [PW, PH] });
 
+      const useDdLayout = DD_LABEL_BRANDS.includes(activeBrand);
+      const sku = useDdLayout
+        ? skuLookup?.get((prod || "").toUpperCase().trim())
+        : undefined;
+
       for (let i = 1; i <= q; i++) {
         if (i > 1) doc.addPage([PW, PH], "landscape");
 
@@ -87,43 +101,96 @@ export async function generateLabelZip(
         doc.setFont(SP.FONT, "normal");
         doc.setFontSize(SP.FS_NORM);
 
-        safeText(doc, `From: ${from}`, x, y, SP.FULL_MAX_W);
-        y += SP.LG;
-
-        doc.setFont(SP.FONT, "bold");
-        safeText(doc, `To - ${dc.name} # ${dc.num}`, x, y, SP.FULL_MAX_W);
-        y += SP.LG;
-
-        doc.setFont(SP.FONT, "normal");
-        if (dc.street) {
-          safeText(doc, dc.street, x, y, SP.FULL_MAX_W);
+        if (useDdLayout) {
+          // ── DD Discount label template (see e:\Downloads\DDs PO 80778126
+          //    QT12.pdf for the reference). Fields missing from the SKU
+          //    Master row are silently skipped. ──
+          safeText(doc, `From: ${from}`, x, y, SP.FULL_MAX_W);
           y += SP.LG;
+
+          doc.setFont(SP.FONT, "bold");
+          safeText(doc, `To: ${dc.name}`, x, y, SP.FULL_MAX_W);
+          y += SP.LG;
+
+          doc.setFont(SP.FONT, "normal");
+          const addressLine = [dc.street, dc.city]
+            .map((s) => (s || "").trim())
+            .filter(Boolean)
+            .join(", ");
+          if (addressLine) {
+            safeText(doc, addressLine, x, y, SP.FULL_MAX_W);
+          }
+
+          const divY = y + SP.DIV_BELOW;
+          doc.setDrawColor(150, 150, 150);
+          doc.setLineWidth(0.5);
+          doc.line(x, divY, PW - x, divY);
+          y = divY + SP.DIV_TO_PO;
+
+          doc.setFont(SP.FONT, "bold");
+          // PO # uses the FULL per-line PO (master + suffix), no Dept suffix.
+          const ddPoLine = dc.poPrefix
+            ? `PO # ${poDigitsLocal}${dc.poPrefix}`
+            : `PO # ${po}`;
+          safeText(doc, ddPoLine, x, y, SP.FULL_MAX_W);
+          y += SP.LG;
+
+          if (sku?.gtin_upc_case_code) {
+            safeText(doc, `Vendor Style # ${sku.gtin_upc_case_code}`, x, y, SP.FULL_MAX_W);
+            y += SP.LG;
+          }
+          if (sku?.case_pack && sku?.item_description) {
+            safeText(doc, `${sku.case_pack}CT ${sku.item_description}`, x, y, SP.FULL_MAX_W);
+            y += SP.LG;
+          }
+          if (typeof sku?.case_pack === "number") {
+            safeText(doc, `Total Units per carton: ${sku.case_pack}`, x, y, SP.FULL_MAX_W);
+            y += SP.LG;
+          }
+          if (typeof sku?.unit_net_wt_oz === "number") {
+            doc.setFont(SP.FONT, "normal");
+            safeText(doc, `Unit Size: ${sku.unit_net_wt_oz} oz, Color : None`, x, y, SP.FULL_MAX_W);
+          }
+        } else {
+          // ── HG / TJX / Marshalls template (unchanged from the original). ──
+          safeText(doc, `From: ${from}`, x, y, SP.FULL_MAX_W);
+          y += SP.LG;
+
+          doc.setFont(SP.FONT, "bold");
+          safeText(doc, `To - ${dc.name} # ${dc.num}`, x, y, SP.FULL_MAX_W);
+          y += SP.LG;
+
+          doc.setFont(SP.FONT, "normal");
+          if (dc.street) {
+            safeText(doc, dc.street, x, y, SP.FULL_MAX_W);
+            y += SP.LG;
+          }
+          if (dc.city) {
+            safeText(doc, dc.city, x, y, SP.FULL_MAX_W);
+          }
+
+          const divY = y + SP.DIV_BELOW;
+          doc.setDrawColor(150, 150, 150);
+          doc.setLineWidth(0.5);
+          doc.line(x, divY, PW - x, divY);
+          y = divY + SP.DIV_TO_PO;
+
+          doc.setFont(SP.FONT, "bold");
+          const dcPoLine = dc.poPrefix
+            ? `PO # ${dc.poPrefix} ${poDigitsLocal}, ${f.dept}`
+            : `PO # ${po}, ${f.dept}`;
+          safeText(doc, dcPoLine, x, y, SP.FULL_MAX_W);
+          y += SP.LG;
+          safeText(doc, `${f.vendorLabel} ${prod}`, x, y, SP.LEFT_MAX_W);
+          safeText(doc, `${f.unitsLabel} ${f.unitsVal}`, xR, y, SP.RIGHT_MAX_W);
+          y += SP.LG;
+
+          doc.setFont(SP.FONT, "normal");
+          safeText(doc, `Stock Ready: ${f.stock}`, x, y, SP.LEFT_MAX_W);
+          safeText(doc, `Preticketed: ${f.pretick}`, xR, y, SP.RIGHT_MAX_W);
+          y += SP.LG;
+          safeText(doc, `Country of Origin: ${f.country}`, x, y, SP.FULL_MAX_W);
         }
-        if (dc.city) {
-          safeText(doc, dc.city, x, y, SP.FULL_MAX_W);
-        }
-
-        const divY = y + SP.DIV_BELOW;
-        doc.setDrawColor(150, 150, 150);
-        doc.setLineWidth(0.5);
-        doc.line(x, divY, PW - x, divY);
-        y = divY + SP.DIV_TO_PO;
-
-        doc.setFont(SP.FONT, "bold");
-        const dcPoLine = dc.poPrefix
-          ? `PO # ${dc.poPrefix} ${poDigitsLocal}, ${f.dept}`
-          : `PO # ${po}, ${f.dept}`;
-        safeText(doc, dcPoLine, x, y, SP.FULL_MAX_W);
-        y += SP.LG;
-        safeText(doc, `${f.vendorLabel} ${prod}`, x, y, SP.LEFT_MAX_W);
-        safeText(doc, `${f.unitsLabel} ${f.unitsVal}`, xR, y, SP.RIGHT_MAX_W);
-        y += SP.LG;
-
-        doc.setFont(SP.FONT, "normal");
-        safeText(doc, `Stock Ready: ${f.stock}`, x, y, SP.LEFT_MAX_W);
-        safeText(doc, `Preticketed: ${f.pretick}`, xR, y, SP.RIGHT_MAX_W);
-        y += SP.LG;
-        safeText(doc, `Country of Origin: ${f.country}`, x, y, SP.FULL_MAX_W);
 
         doc.setFont(SP.FONT, "bold");
         doc.setFontSize(SP.FS_CARTON);

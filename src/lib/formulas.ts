@@ -12,6 +12,7 @@ import type {
   LabelElement,
   DC,
   DCSummary,
+  SkuMasterRow,
   SummaryTotals,
   SummaryData,
 } from "./types";
@@ -186,4 +187,118 @@ export function buildLabelElements(
 /** Escape text for safe HTML insertion (live preview). */
 export function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/**
+ * DD Discount label layout — distinct from the HG / TJX / Marshalls template.
+ * Pulls extra metadata from the SKU Master (Vendor Style #, case pack, item
+ * description, unit weight). Any field that's missing in the catalogue is
+ * silently skipped, per the user's instruction ("skip them if not available").
+ *
+ * Reference: e:\Downloads\DDs PO 80778126 QT12.pdf
+ *   From: Quikfoods Inc
+ *   To: DD's Discount, East Coast DC
+ *   1707 Shearer Drive, Carlisle, PA 17013
+ *   ─────────
+ *   PO # 80778126
+ *   Vendor Style # 855664004990          (gtin_upc_case_code)
+ *   10CT QUIKTEA CARDAMOM CHAI TEA LATTE (case_pack + item_description)
+ *   Total Units per carton: 10           (case_pack)
+ *   Unit Size: 8.47 oz, Color : None     (unit_net_wt_oz)
+ *                Carton #N of M
+ */
+export function buildLabelElementsDdDiscount(
+  from: string,
+  dc: DC,
+  po: string,
+  qty: number,
+  cartonNum: number,
+  sku: SkuMasterRow | undefined,
+): LabelElement[] {
+  const SP = SPEC;
+  const x = SP.X;
+  const FN = SP.FS_NORM;
+  const FC = SP.FS_CARTON;
+  const els: LabelElement[] = [];
+  let y = SP.Y_TOP;
+
+  els.push({ text: `From: ${from}`, x, y, fs: FN, fw: "400" });
+  y += SP.LG;
+  els.push({ text: `To: ${dc.name}`, x, y, fs: FN, fw: "700" });
+  y += SP.LG;
+
+  // Single-line address — "{street}, {city}". Skip if both empty.
+  const addressLine = [dc.street, dc.city]
+    .map((s) => (s || "").trim())
+    .filter(Boolean)
+    .join(", ");
+  if (addressLine) {
+    els.push({ text: addressLine, x, y, fs: FN, fw: "400" });
+  }
+
+  const divY = y + SP.DIV_BELOW;
+  els.push({ isDivider: true, y: divY });
+  y = divY + SP.DIV_TO_PO;
+
+  els.push({ text: `PO # ${po}`, x, y, fs: FN, fw: "700" });
+  y += SP.LG;
+
+  // Vendor Style # is the GTIN/UPC case code from the SKU master — not the
+  // SKU `item_code` (QT12). Skip the line entirely if no GTIN is on file.
+  if (sku?.gtin_upc_case_code) {
+    els.push({
+      text: `Vendor Style # ${sku.gtin_upc_case_code}`,
+      x,
+      y,
+      fs: FN,
+      fw: "700",
+    });
+    y += SP.LG;
+  }
+
+  // "{case_pack}CT {item_description}" — e.g. "10CT QUIKTEA CARDAMOM CHAI TEA LATTE"
+  if (sku?.case_pack && sku?.item_description) {
+    els.push({
+      text: `${sku.case_pack}CT ${sku.item_description}`,
+      x,
+      y,
+      fs: FN,
+      fw: "700",
+    });
+    y += SP.LG;
+  }
+
+  if (typeof sku?.case_pack === "number") {
+    els.push({
+      text: `Total Units per carton: ${sku.case_pack}`,
+      x,
+      y,
+      fs: FN,
+      fw: "700",
+    });
+    y += SP.LG;
+  }
+
+  if (typeof sku?.unit_net_wt_oz === "number") {
+    els.push({
+      text: `Unit Size: ${sku.unit_net_wt_oz} oz, Color : None`,
+      x,
+      y,
+      fs: FN,
+      fw: "400",
+    });
+  }
+
+  const ct = `Carton #${cartonNum} of ${qty}`;
+  const approxW = ct.length * FC * 0.575;
+  els.push({
+    text: ct,
+    x: (SP.PW - approxW) / 2,
+    y: SP.Y_CARTON,
+    fs: FC,
+    fw: "700",
+    isCarton: true,
+  });
+
+  return els;
 }

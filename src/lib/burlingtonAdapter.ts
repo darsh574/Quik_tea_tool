@@ -14,19 +14,40 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type {
+  BrandKey,
   BurlingtonShipment,
   DC,
   QtyMap,
   ShipmentState,
 } from "./types";
 
+/**
+ * Brand-specific defaults for the synthetic DC built from a Burlington-style
+ * line item. For DD Discount, we use the East Coast DC address from the
+ * reference label PDF (1707 Shearer Drive, Carlisle, PA 17013) so the
+ * generated labels show real ship-to info. Multiple-DC support can be
+ * layered on later by mapping suffix → DC details if/when needed.
+ */
+const DC_DEFAULTS: Partial<Record<BrandKey, { name: string; street: string; city: string }>> = {
+  ddDiscount: {
+    name: "DD's Discount, East Coast DC",
+    street: "1707 Shearer Drive",
+    city: "Carlisle, PA 17013",
+  },
+};
+
 export function burlingtonToShipmentState(
   burlington: BurlingtonShipment,
-  dcName: string,
+  fallbackDcName: string,
+  brand?: BrandKey,
 ): ShipmentState {
   const productSet = new Set<string>();
   const dcMap = new Map<string, DC>();
   const qty: QtyMap = {};
+  const dcDefaults = brand ? DC_DEFAULTS[brand] : undefined;
+  const dcName = dcDefaults?.name ?? fallbackDcName;
+  const dcStreet = dcDefaults?.street ?? "";
+  const dcCity = dcDefaults?.city ?? "";
 
   burlington.lines.forEach((l) => {
     const product = (l.product || "").trim().toUpperCase();
@@ -44,8 +65,8 @@ export function burlingtonToShipmentState(
         num: suffix,
         code: suffix,
         name: dcName,
-        street: "",
-        city: "",
+        street: dcStreet,
+        city: dcCity,
         poPrefix: suffix,
       });
     }
