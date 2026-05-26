@@ -8,15 +8,23 @@ import { buildBolPDF } from "@/lib/bolPdf";
 import {
   syncBolFromSummary,
   syncBolFromBurlington,
+  syncBolFromSierra,
   updateShipperInfoPO,
 } from "@/lib/bolHelpers";
-import { savePoRecord, saveSimplePoRecord } from "@/lib/history";
+import {
+  savePoRecord,
+  saveSimplePoRecord,
+  saveSierraPoRecord,
+} from "@/lib/history";
+import { SIERRA_WEIGHT_PER_UNIT, SIERRA_WEIGHT_BASES } from "@/lib/constants";
 import { OrdersTable } from "@/components/bol/OrdersTable";
 import PoPicker from "@/components/PoPicker";
 import type { BolForm, BrandKey } from "@/lib/types";
 
 /** Brands that use the line-item (Burlington / DD Discount) routing flow. */
 const SIMPLE_PO_BRANDS: BrandKey[] = ["burlington", "ddDiscount"];
+/** Brands using the Sierra matrix routing flow. */
+const SIERRA_BRANDS: BrandKey[] = ["sierra"];
 
 export default function BolTab() {
   const activeBrand = useShipmentStore((s) => s.activeBrand);
@@ -66,6 +74,13 @@ export default function BolTab() {
               cu: 0,
               pallets: burlingtonTotals?.pallets ?? 0,
             },
+            bol,
+            format,
+          });
+        } else if (SIERRA_BRANDS.includes(activeBrand) && st.sierra) {
+          await saveSierraPoRecord({
+            brand: activeBrand,
+            sierra: st.sierra,
             bol,
             format,
           });
@@ -150,6 +165,33 @@ export default function BolTab() {
     return { finalQty: final, weight, pallets };
   }, [st]);
 
+  /** Compute Sierra totals from the matrix (mirrors SierraRouting.tsx). */
+  const sierraTotals = useMemo(() => {
+    const s = st.sierra;
+    if (!s) return null;
+    const lines = Array.isArray(s.lines) ? s.lines : [];
+    const dcs = Array.isArray(s.dcs) ? s.dcs : [];
+    let totalCases = 0;
+    let totalWeight = 0;
+    let totalPallets = 0;
+    dcs.forEach((d, idx) => {
+      const base =
+        SIERRA_WEIGHT_BASES[Math.min(idx, SIERRA_WEIGHT_BASES.length - 1)];
+      let dcCases = 0;
+      lines.forEach((l) => {
+        const v =
+          typeof l.final?.[d.num] === "number" ? (l.final[d.num] as number) : 0;
+        dcCases += v;
+      });
+      totalCases += dcCases;
+      if (dcCases > 0) {
+        totalWeight += dcCases * SIERRA_WEIGHT_PER_UNIT + base;
+        totalPallets += 1;
+      }
+    });
+    return { totalCases, totalWeight, totalPallets };
+  }, [st]);
+
   async function handleSync() {
     // ── Burlington / DD Discount: pull from the line-item routing snapshot.
     if (SIMPLE_PO_BRANDS.includes(activeBrand)) {
@@ -158,7 +200,11 @@ export default function BolTab() {
         flashToast("Fill the Burlington routing (header PO + at least one line) first.");
         return;
       }
-      const patch = syncBolFromBurlington(b, burlingtonTotals ?? { finalQty: 0, weight: 0, pallets: 0 });
+      const patch = syncBolFromBurlington(
+        b,
+        burlingtonTotals ?? { finalQty: 0, weight: 0, pallets: 0 },
+        activeBrand,
+      );
       setBol(patch);
       skipNextAutoSave.current = true;
       setAutoSaveOn(true);
@@ -179,7 +225,46 @@ export default function BolTab() {
         setLastSavedAt(new Date());
         setAutoSaveStatus("saved");
         bumpDataVersion();
-        flashToast("Synced from Burlington routing · auto-save is now ON.");
+        flashToast("Synced from routing · auto-save is now ON.");
+      } catch (err) {
+        setAutoSaveStatus("error");
+        flashToast(
+          "Synced — but save failed: " +
+            (err instanceof Error ? err.message : "unknown error") +
+            ". Auto-save still on; will retry on next edit.",
+        );
+      }
+      return;
+    }
+
+    // ── Sierra: matrix routing → pulls confident BOL fields from sierra. ──
+    if (SIERRA_BRANDS.includes(activeBrand)) {
+      const s = st.sierra;
+      if (!s || (s.poNumber ?? "").trim() === "") {
+        flashToast("Fill the Sierra routing (PO + final cases) first.");
+        return;
+      }
+      const t = sierraTotals ?? { totalCases: 0, totalWeight: 0, totalPallets: 0 };
+      if (t.totalCases <= 0) {
+        flashToast("Enter at least one final case count on the Sierra routing.");
+        return;
+      }
+      const patch = syncBolFromSierra(s, t);
+      setBol(patch);
+      skipNextAutoSave.current = true;
+      setAutoSaveOn(true);
+      setAutoSaveStatus("saving");
+      try {
+        await saveSierraPoRecord({
+          brand: activeBrand,
+          sierra: s,
+          bol: { ...bol, ...patch },
+          format,
+        });
+        setLastSavedAt(new Date());
+        setAutoSaveStatus("saved");
+        bumpDataVersion();
+        flashToast("Synced from Sierra routing · auto-save is now ON.");
       } catch (err) {
         setAutoSaveStatus("error");
         flashToast(
@@ -241,6 +326,13 @@ export default function BolTab() {
               bol,
               format,
             })
+          : SIERRA_BRANDS.includes(activeBrand) && st.sierra
+          ? await saveSierraPoRecord({
+              brand: activeBrand,
+              sierra: st.sierra,
+              bol,
+              format,
+            })
           : await savePoRecord({ brand: activeBrand, shipmentState: st, format, bol });
       setLastSavedAt(new Date());
       setAutoSaveStatus("saved");
@@ -276,6 +368,13 @@ export default function BolTab() {
               cu: 0,
               pallets: burlingtonTotals?.pallets ?? 0,
             },
+            bol,
+            format,
+          });
+        } else if (SIERRA_BRANDS.includes(activeBrand) && st.sierra) {
+          await saveSierraPoRecord({
+            brand: activeBrand,
+            sierra: st.sierra,
             bol,
             format,
           });

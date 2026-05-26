@@ -10,6 +10,7 @@ import type {
   BrandKey,
   SummaryData,
   BurlingtonShipment,
+  SierraShipment,
 } from "./types";
 
 /**
@@ -29,25 +30,101 @@ export const BURLINGTON_SHIP_TO = {
  * Burlington / DD Discount sync — pulls only the fields we're confident about
  * from the line-item routing. Everything else (carrier, BOL #, load ID, dates,
  * authorisation, etc.) is left blank for the user to enter manually.
+ *
+ * The Burlington address is a single fixed DC (Edgewater Park, NJ), so we
+ * auto-apply Ship-To for that brand only. DD Discount BOLs ship to varying
+ * destinations (sometimes a carrier depot, sometimes the East Coast DC) —
+ * per the reference BOL we leave Ship-To blank for DD Discount and let the
+ * user fill it in for that specific shipment.
  */
 export function syncBolFromBurlington(
   burlington: BurlingtonShipment,
   totals: { finalQty: number; weight: number; pallets: number },
+  brand: BrandKey = "burlington",
 ): Partial<BolForm> {
   const po = burlington.headerPo.trim();
   const palletsInt = Math.max(0, Math.round(totals.pallets));
   const weightInt = Math.max(0, Math.round(totals.weight));
   const cartons = Math.max(0, Math.round(totals.finalQty));
 
+  // Brand-specific commodity copy — matches each customer's BOL wording.
+  const commodity =
+    cartons <= 0
+      ? ""
+      : brand === "ddDiscount"
+      ? `${cartons} cartons of QUIKTEA CHAI TEA LATTE & COFFEE`
+      : `${cartons} cartons of CHAI TEA LATTE`;
+
   return {
-    ...BURLINGTON_SHIP_TO,
+    ...(brand === "burlington" ? BURLINGTON_SHIP_TO : {}),
     bol_po_number: po,
     hu_qty: String(palletsInt),
     hu_qty_p2: String(palletsInt),
     hu_pkg_qty: String(cartons),
     hu_weight: String(weightInt),
-    commodity: cartons > 0 ? `${cartons} Cartons of Instant Chai Tea Latte` : "",
+    commodity,
   };
+}
+
+/**
+ * Sierra Trading Post sync — pulls confident fields from the Sierra matrix.
+ * Ship-To is only auto-applied when the routing touches exactly one DC
+ * (unambiguous); for multi-DC POs the user picks the destination manually.
+ *
+ * Reference BOL: `Sierra BOL 810R958456.pdf`
+ *   PO #          → bol_po_number = sierra.poNumber
+ *   Ship-To       → from the single DC's address (when unambiguous)
+ *   Handling Qty  → totalPallets (rounded)
+ *   Package Qty   → totalCases (sum of all final values)
+ *   Weight        → totalWeight (rounded, lb)
+ *   Commodity     → "{N} Cases of Instant Chai Tea Latte premix powder"
+ */
+export function syncBolFromSierra(
+  sierra: SierraShipment,
+  totals: {
+    totalCases: number;
+    totalWeight: number;
+    totalPallets: number;
+  },
+): Partial<BolForm> {
+  const po = (sierra.poNumber ?? "").trim();
+  const cases = Math.max(0, Math.round(totals.totalCases));
+  const weight = Math.max(0, Math.round(totals.totalWeight));
+  const pallets = Math.max(0, Math.round(totals.totalPallets));
+
+  // Single-DC heuristic: if exactly one DC has any final cases, fill that
+  // DC's address. Otherwise leave Ship-To untouched.
+  const dcs = Array.isArray(sierra.dcs) ? sierra.dcs : [];
+  const lines = Array.isArray(sierra.lines) ? sierra.lines : [];
+  const dcsWithData = dcs.filter((d) =>
+    lines.some(
+      (l) =>
+        typeof l.final?.[d.num] === "number" &&
+        (l.final[d.num] as number) > 0,
+    ),
+  );
+
+  const patch: Partial<BolForm> = {
+    bol_po_number: po,
+    hu_qty: String(pallets),
+    hu_qty_p2: String(pallets),
+    hu_pkg_qty: String(cases),
+    hu_weight: String(weight),
+    commodity:
+      cases > 0
+        ? `${cases} Cases of Instant Chai Tea Latte premix powder`
+        : "",
+  };
+
+  if (dcsWithData.length === 1) {
+    const dc = dcsWithData[0];
+    patch.st_name = dc.name || "Sierra Distribution Center";
+    patch.st_location = dc.num;
+    patch.st_address = dc.street || "";
+    patch.st_csz = dc.city || "";
+  }
+
+  return patch;
 }
 
 /** The initial Bill of Lading form, matching the original tool's default inputs. */
