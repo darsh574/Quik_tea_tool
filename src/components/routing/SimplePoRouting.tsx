@@ -16,10 +16,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { listSkuMaster } from "@/lib/skuMaster";
 import { BRAND_CONFIG } from "@/lib/constants";
+import { saveSimplePoRecord } from "@/lib/history";
+import { useShipmentStore } from "@/store/useShipmentStore";
 import type { BrandKey, SkuMasterRow } from "@/lib/types";
 
 interface Line {
   _id: string;
+  /** Per-row PO number — defaults to the header PO but editable per row. */
+  po: string;
   product: string;
   origQty: number | "";
   finalQty: number | "";
@@ -33,6 +37,7 @@ interface Line {
 
 const newLine = (): Line => ({
   _id: Math.random().toString(36).slice(2),
+  po: "",
   product: "",
   origQty: "",
   finalQty: "",
@@ -90,6 +95,11 @@ export default function SimplePoRouting({ brand }: { brand: BrandKey }) {
   // ── Line items ──
   const [lines, setLines] = useState<Line[]>(() => initLines());
 
+  // ── Submit state ──
+  const [submitting, setSubmitting] = useState(false);
+  const [submitMsg, setSubmitMsg] = useState<{ kind: "ok" | "err"; msg: string } | null>(null);
+  const bumpDataVersion = useShipmentStore((s) => s.bumpDataVersion);
+
   // ── SKU Master lookup ──
   const [skus, setSkus] = useState<SkuMasterRow[]>([]);
   const [skuLoadErr, setSkuLoadErr] = useState("");
@@ -106,6 +116,16 @@ export default function SimplePoRouting({ brand }: { brand: BrandKey }) {
   useEffect(() => {
     loadSkus();
   }, [loadSkus]);
+
+  // Header PO fills in any row that hasn't been overridden yet (empty PO).
+  // Rows that the user has explicitly edited to something different are left
+  // alone — header is the default, not a forced override.
+  useEffect(() => {
+    if (!poNumber) return;
+    setLines((rows) =>
+      rows.map((r) => (r.po.trim() === "" ? { ...r, po: poNumber } : r)),
+    );
+  }, [poNumber]);
 
   const skuByCode = useMemo(() => {
     const m = new Map<string, SkuMasterRow>();
@@ -222,6 +242,61 @@ export default function SimplePoRouting({ brand }: { brand: BrandKey }) {
     setStartDate("");
     setEndDate("");
     setLines(initLines());
+    setSubmitMsg(null);
+  }
+
+  const filledLines = useMemo(
+    () =>
+      lines.filter(
+        (l) => l.product.trim() !== "" || l.origQty !== "" || l.finalQty !== "",
+      ),
+    [lines],
+  );
+  const canSubmit = poNumber.trim() !== "" && filledLines.length > 0;
+
+  async function handleSubmit() {
+    setSubmitting(true);
+    setSubmitMsg(null);
+    try {
+      const rec = await saveSimplePoRecord({
+        brand,
+        burlington: {
+          headerPo: poNumber.trim(),
+          startDate,
+          endDate,
+          palletConstants: {
+            cuFt: nz(palletCuFt),
+            wt: nz(palletWt),
+            maxHeight: nz(maxPalletHeight),
+          },
+          lines: filledLines.map((l) => ({
+            po: (l.po || poNumber).trim(),
+            product: l.product.trim().toUpperCase(),
+            origQty: nz(l.origQty),
+            finalQty: nz(l.finalQty),
+            hi: nz(l.hi),
+          })),
+        },
+        totals: {
+          finalQty: totals.final,
+          weight: totals.weight,
+          cu: totals.cu,
+          pallets: totals.pallets,
+        },
+      });
+      bumpDataVersion();
+      setSubmitMsg({
+        kind: "ok",
+        msg: `✓ PO ${rec.po_number} saved to the PO list. It's now searchable from History.`,
+      });
+    } catch (err) {
+      setSubmitMsg({
+        kind: "err",
+        msg: "✗ " + (err instanceof Error ? err.message : "Could not save the PO."),
+      });
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -616,14 +691,21 @@ export default function SimplePoRouting({ brand }: { brand: BrandKey }) {
                   <tr key={line._id}>
                     <td style={{ color: "#888", fontWeight: 600 }}>{idx + 1}</td>
 
-                    <td className={"po-cell " + (poNumber ? "" : "derived-mute")}>
-                      {poNumber || "—"}
+                    <td className={line.po ? "manual po-cell" : "manual-empty"}>
+                      <input
+                        value={line.po}
+                        onChange={(e) =>
+                          patchLine(line._id, { po: e.target.value })
+                        }
+                        placeholder={poNumber || "—"}
+                        title="Editable per row — defaults to the header PO above"
+                      />
                     </td>
-                    <td className={masterPo ? "derived" : "derived-mute"}>
-                      {masterPo || "—"}
+                    <td className={line.po.length >= 2 ? "derived" : "derived-mute"}>
+                      {line.po.length >= 2 ? line.po.slice(0, -2) : "—"}
                     </td>
-                    <td className={suffix ? "derived" : "derived-mute"}>
-                      {suffix || "—"}
+                    <td className={line.po.length >= 2 ? "derived" : "derived-mute"}>
+                      {line.po.length >= 2 ? line.po.slice(-2) : "—"}
                     </td>
                     <td className={startDate ? "derived" : "derived-mute"}>
                       {formatDate(startDate) || "—"}
@@ -757,6 +839,51 @@ export default function SimplePoRouting({ brand }: { brand: BrandKey }) {
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* ── SUBMIT — save this PO into the shared list ── */}
+      <div className="qt-simple-card">
+        <div className="qt-simple-title">Submit Routing</div>
+        <div className="qt-simple-sub" style={{ marginBottom: 14 }}>
+          Save this {brandLabel} PO into the shared <strong>PO list</strong>. Once submitted, it&apos;ll
+          show up on the <strong>History</strong> tab and is keyed by the header PO number above.
+          Per-row POs are preserved inside the snapshot.
+        </div>
+        <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+          <button
+            type="button"
+            className="qt-simple-btn accent"
+            onClick={handleSubmit}
+            disabled={submitting || !canSubmit}
+            title={
+              canSubmit
+                ? "Save this PO to the shared list"
+                : "Set the header PO above and add at least one line item first"
+            }
+            style={{ padding: "10px 22px", fontSize: 13 }}
+          >
+            {submitting ? "Submitting…" : "✓ Submit & Save to PO List"}
+          </button>
+          {!canSubmit && (
+            <span style={{ fontSize: 12, color: "#a47712" }}>
+              {!poNumber.trim()
+                ? "Set the PO number above."
+                : "Add at least one line item with a product or qty."}
+            </span>
+          )}
+        </div>
+        {submitMsg && (
+          <div
+            className="qt-simple-warn"
+            style={{
+              marginTop: 12,
+              background: submitMsg.kind === "ok" ? "#e8f6ee" : "#fdece6",
+              color: submitMsg.kind === "ok" ? "#1e7a4a" : "#c94628",
+            }}
+          >
+            {submitMsg.msg}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -109,6 +109,40 @@ export interface ShipmentState {
   po: string;
   from: string;
   skuMeta: Record<string, SkuMeta>;
+  /**
+   * Optional Burlington / DD Discount line-item payload — populated only for
+   * the "simple PO" brands. The classic HG / TJX / Marshalls routing flow
+   * leaves this undefined. Stored inside the `shipment_state` JSONB column
+   * so no SQL schema change is required.
+   */
+  burlington?: BurlingtonShipment;
+}
+
+/** One line in the Burlington / DD Discount routing table. */
+export interface BurlingtonLine {
+  /** Per-row PO number (defaults to the header PO but editable per row). */
+  po: string;
+  product: string;
+  origQty: number;
+  finalQty: number;
+  /** Pallet `Ti` override for this row (catalogue value when blank). */
+  hi: number;
+}
+
+/** Pallet constants used to compute Burlington / DD Discount totals. */
+export interface BurlingtonPalletConstants {
+  cuFt: number;
+  wt: number;
+  maxHeight: number;
+}
+
+/** The full Burlington / DD Discount routing snapshot. */
+export interface BurlingtonShipment {
+  headerPo: string;
+  startDate: string;
+  endDate: string;
+  lines: BurlingtonLine[];
+  palletConstants: BurlingtonPalletConstants;
 }
 
 /** Label Format tab fields. */

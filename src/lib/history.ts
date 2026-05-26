@@ -12,6 +12,7 @@ import type {
   LabelFormat,
   BolForm,
   PoRecord,
+  BurlingtonShipment,
 } from "@/lib/types";
 
 export interface SaveInput {
@@ -66,6 +67,91 @@ export async function savePoRecord({ brand, shipmentState, format, bol }: SaveIn
     label_total: labelTotal,
     total_pallets: summary ? Math.round(summary.tot.pallets) : 0,
     bol_number: bol.bol_number || null,
+    created_by: user?.id ?? null,
+    created_by_username: username,
+  };
+
+  const { data, error } = await supabase
+    .from("po_records")
+    .upsert(row, { onConflict: "po_number,brand" })
+    .select()
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data as PoRecord;
+}
+
+/**
+ * Save a Burlington / DD Discount routing snapshot. Mirrors `savePoRecord` so
+ * History shows the row identically — keyed by (headerPo, brand) with empty
+ * label_format / bol_form (those flows aren't wired for these brands yet).
+ *
+ * Totals come from the SimplePoRouting component (so the History `Pallets`
+ * column shows the same number as the bottom Total row).
+ */
+export interface SaveSimpleInput {
+  brand: BrandKey;
+  burlington: BurlingtonShipment;
+  totals: {
+    finalQty: number;
+    weight: number;
+    cu: number;
+    pallets: number;
+  };
+}
+
+export async function saveSimplePoRecord({
+  brand,
+  burlington,
+  totals,
+}: SaveSimpleInput): Promise<PoRecord> {
+  const supabase = createClient();
+
+  const poNumber = burlington.headerPo.trim();
+  if (!poNumber) {
+    throw new Error("No PO number set — fill the PO number above before submitting.");
+  }
+  if (burlington.lines.length === 0) {
+    throw new Error("No line items to save — add at least one line first.");
+  }
+
+  // Distinct product list for the History row's expanded view.
+  const products = Array.from(
+    new Set(burlington.lines.map((l) => l.product).filter((p) => p)),
+  );
+
+  const shipment_state: ShipmentState = {
+    products,
+    dcs: [],
+    qty: {},
+    qtyFinal: {},
+    qtyFinalTotal: {},
+    po: poNumber,
+    from: "",
+    skuMeta: {},
+    burlington,
+  };
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const username =
+    (user?.user_metadata?.username as string | undefined) ||
+    user?.email?.split("@")[0] ||
+    null;
+
+  const row = {
+    po_number: poNumber,
+    po_digits: poDigits(poNumber),
+    brand,
+    shipment_state,
+    label_format: {} as Record<string, unknown>,
+    bol_form: {} as Record<string, unknown>,
+    summary: null,
+    label_total: totals.finalQty,
+    total_pallets: Math.round(totals.pallets),
+    bol_number: null,
     created_by: user?.id ?? null,
     created_by_username: username,
   };
