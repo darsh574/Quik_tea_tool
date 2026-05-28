@@ -478,6 +478,19 @@ export default function SierraRouting({ brand }: { brand: BrandKey }) {
             <button type="button" className="qt-sierra-btn accent" onClick={addLine}>
               + Add Line
             </button>
+            <button
+              type="button"
+              className="qt-sierra-btn accent"
+              onClick={handleSubmit}
+              disabled={submitting || !canSubmit}
+              title={
+                canSubmit
+                  ? "Save this PO to the shared list"
+                  : "Set the PO number and enter at least one final-case value first"
+              }
+            >
+              {submitting ? "Submitting…" : "✓ Submit"}
+            </button>
           </div>
         </div>
 

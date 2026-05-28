@@ -49,6 +49,7 @@ export default function BolTab() {
   const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "saving" | "saved" | "error">(
     "idle",
   );
+  const [autoSaveError, setAutoSaveError] = useState<string>("");
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Skip auto-save on the very first render after enabling (Sync already wrote)
@@ -89,10 +90,15 @@ export default function BolTab() {
         }
         setLastSavedAt(new Date());
         setAutoSaveStatus("saved");
+        setAutoSaveError("");
         bumpDataVersion();
-      } catch {
-        // Silent for auto-save — the badge flips to "error" but we don't
-        // interrupt the user. They can still hit Save / Generate manually.
+      } catch (err) {
+        // Surface the error so it's debuggable. We don't interrupt the
+        // user — they can still hit Save / Generate manually.
+        const msg = err instanceof Error ? err.message : "unknown error";
+        // eslint-disable-next-line no-console
+        console.error("[BolTab] auto-save failed:", err);
+        setAutoSaveError(msg);
         setAutoSaveStatus("error");
       }
     }, 1500);
@@ -227,10 +233,14 @@ export default function BolTab() {
         bumpDataVersion();
         flashToast("Synced from routing · auto-save is now ON.");
       } catch (err) {
+        const msg = err instanceof Error ? err.message : "unknown error";
+        // eslint-disable-next-line no-console
+        console.error("[BolTab] sync save failed:", err);
+        setAutoSaveError(msg);
         setAutoSaveStatus("error");
         flashToast(
           "Synced — but save failed: " +
-            (err instanceof Error ? err.message : "unknown error") +
+            msg +
             ". Auto-save still on; will retry on next edit.",
         );
       }
@@ -266,10 +276,14 @@ export default function BolTab() {
         bumpDataVersion();
         flashToast("Synced from Sierra routing · auto-save is now ON.");
       } catch (err) {
+        const msg = err instanceof Error ? err.message : "unknown error";
+        // eslint-disable-next-line no-console
+        console.error("[BolTab] sync save failed:", err);
+        setAutoSaveError(msg);
         setAutoSaveStatus("error");
         flashToast(
           "Synced — but save failed: " +
-            (err instanceof Error ? err.message : "unknown error") +
+            msg +
             ". Auto-save still on; will retry on next edit.",
         );
       }
@@ -297,6 +311,7 @@ export default function BolTab() {
       });
       setLastSavedAt(new Date());
       setAutoSaveStatus("saved");
+      setAutoSaveError("");
       bumpDataVersion();
       flashToast("Synced from Summary · auto-save is now ON.");
     } catch (err) {
@@ -403,7 +418,12 @@ export default function BolTab() {
         <div className="bol-action-bar">
           <div>
             <div className="bol-title">Bill of Lading Generator</div>
-            <AutoSaveBadge state={autoSaveStatus} on={autoSaveOn} lastSavedAt={lastSavedAt} />
+            <AutoSaveBadge
+              state={autoSaveStatus}
+              on={autoSaveOn}
+              lastSavedAt={lastSavedAt}
+              errorMsg={autoSaveError}
+            />
           </div>
           <div className="bol-buttons">
             <div className="bol-mode-toggle">
@@ -781,10 +801,12 @@ function AutoSaveBadge({
   state,
   on,
   lastSavedAt,
+  errorMsg,
 }: {
   state: "idle" | "saving" | "saved" | "error";
   on: boolean;
   lastSavedAt: Date | null;
+  errorMsg?: string;
 }) {
   if (!on) {
     return (
@@ -837,7 +859,9 @@ function AutoSaveBadge({
         ? `Auto-saved · ${lastSavedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
         : "Auto-saved"
       : state === "error"
-      ? "Auto-save error · will retry"
+      ? errorMsg
+        ? `Auto-save error · ${errorMsg}`
+        : "Auto-save error · will retry"
       : "Auto-save on";
 
   return (

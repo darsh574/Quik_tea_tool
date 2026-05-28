@@ -7,6 +7,24 @@
 import { createClient } from "@/lib/supabase/client";
 import type { SkuMasterRow } from "@/lib/types";
 
+/**
+ * Editing the SKU Master is restricted to admins. Operators have read-only
+ * access via `listSkuMaster`. The UI hides the edit affordances; this guard is
+ * the defence-in-depth so a direct call still fails. The DB layer (RLS) can be
+ * tightened separately if/when needed.
+ */
+async function requireAdmin(
+  supabase: ReturnType<typeof createClient>,
+): Promise<void> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const role = (user?.user_metadata as { role?: unknown } | null)?.role;
+  if (role !== "admin") {
+    throw new Error("Only admins can modify the SKU Master.");
+  }
+}
+
 /** Editable fields for create/update — everything except DB-managed timestamps + id. */
 export type SkuMasterInput = Omit<
   SkuMasterRow,
@@ -77,6 +95,7 @@ export async function upsertSkuMaster(input: SkuMasterInput): Promise<SkuMasterR
   if (!row.item_code) throw new Error("Item Code is required.");
 
   const supabase = createClient();
+  await requireAdmin(supabase);
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -105,6 +124,7 @@ export async function bulkUpsertSkuMaster(
   inputs: SkuMasterInput[],
 ): Promise<{ saved: number; skipped: number; dedupedDuplicates: number; duplicateCodes: string[] }> {
   const supabase = createClient();
+  await requireAdmin(supabase);
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -157,6 +177,7 @@ export async function bulkUpsertSkuMaster(
 /** Delete one SKU by id. */
 export async function deleteSkuMaster(id: string): Promise<void> {
   const supabase = createClient();
+  await requireAdmin(supabase);
   const { error } = await supabase.from("sku_master").delete().eq("id", id);
   if (error) throw new Error(error.message);
 }

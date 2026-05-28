@@ -584,6 +584,19 @@ export default function SimplePoRouting({ brand }: { brand: BrandKey }) {
             <button type="button" className="qt-simple-btn accent" onClick={addLine}>
               + Add Line
             </button>
+            <button
+              type="button"
+              className="qt-simple-btn accent"
+              onClick={handleSubmit}
+              disabled={submitting || !canSubmit}
+              title={
+                canSubmit
+                  ? "Save this PO to the shared list"
+                  : "Set the header PO above and add at least one line item first"
+              }
+            >
+              {submitting ? "Submitting…" : "✓ Submit"}
+            </button>
           </div>
         </div>
 

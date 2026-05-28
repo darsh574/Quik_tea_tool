@@ -62,7 +62,8 @@ const SECTION_SPANS = buildSectionRow();
 
 export default function SkuMasterTab() {
   const me = useCurrentUser();
-  const canDelete = me.role === "admin";
+  const isAdmin = me.role === "admin";
+  const canDelete = isAdmin;
 
   const [rows, setRows] = useState<SkuMasterRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -493,7 +494,10 @@ export default function SkuMasterTab() {
           <div className="qt-sku-toolbar-left">
             <div className="qt-sku-title">SKU Master</div>
             <div className="qt-sku-sub">
-              Central catalogue — 30 columns mirroring your SKU MASTER.xlsx. Inline edit, or bulk-import from Excel.
+              Central catalogue — 30 columns mirroring your SKU MASTER.xlsx.{" "}
+              {isAdmin
+                ? "Inline edit, or bulk-import from Excel."
+                : "Read-only — only admins can add, edit, import, or delete SKUs."}
             </div>
           </div>
           <div className="qt-sku-actions">
@@ -507,23 +511,27 @@ export default function SkuMasterTab() {
             >
               ⬇ Download Template
             </button>
-            <button
-              type="button"
-              className="qt-sku-btn ghost"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              ⬆ Bulk Upload
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".xlsx,.xls,.csv"
-              style={{ display: "none" }}
-              onChange={(e) => handleFile(e.target.files?.[0])}
-            />
-            <button type="button" className="qt-sku-btn accent" onClick={addBlankDraft}>
-              + Add Row
-            </button>
+            {isAdmin && (
+              <>
+                <button
+                  type="button"
+                  className="qt-sku-btn ghost"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  ⬆ Bulk Upload
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".xlsx,.xls,.csv"
+                  style={{ display: "none" }}
+                  onChange={(e) => handleFile(e.target.files?.[0])}
+                />
+                <button type="button" className="qt-sku-btn accent" onClick={addBlankDraft}>
+                  + Add Row
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -609,7 +617,13 @@ export default function SkuMasterTab() {
               ) : rows.length === 0 && drafts.length === 0 ? (
                 <tr>
                   <td colSpan={SKU_COLUMNS.length + 1} className="qt-sku-empty">
-                    No SKUs yet. Click <strong>+ Add Row</strong> or upload an Excel template above.
+                    {isAdmin ? (
+                      <>
+                        No SKUs yet. Click <strong>+ Add Row</strong> or upload an Excel template above.
+                      </>
+                    ) : (
+                      <>No SKUs in the catalogue yet. Ask an admin to add some.</>
+                    )}
                   </td>
                 </tr>
               ) : (
@@ -657,7 +671,7 @@ export default function SkuMasterTab() {
                                 Cancel
                               </button>
                             </>
-                          ) : (
+                          ) : isAdmin ? (
                             <>
                               <button
                                 type="button"
@@ -678,6 +692,10 @@ export default function SkuMasterTab() {
                                 </button>
                               )}
                             </>
+                          ) : (
+                            <span style={{ fontSize: 11, color: "#aaa", fontStyle: "italic" }}>
+                              Read-only
+                            </span>
                           )}
                         </div>
                       </td>

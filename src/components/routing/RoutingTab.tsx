@@ -273,7 +273,33 @@ export default function RoutingTab() {
       <>
       {/* ── UPLOAD ── */}
       <div className="card first">
-        <div className="section-title">Import from Excel / CSV</div>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 12,
+            flexWrap: "wrap",
+            marginBottom: 6,
+          }}
+        >
+          <div className="section-title" style={{ marginBottom: 0 }}>
+            Import from Excel / CSV
+          </div>
+          <button
+            className="btn-generate"
+            onClick={handleSubmitRouting}
+            disabled={submitting || !canSubmit}
+            title={
+              canSubmit
+                ? "Save this PO to the shared list"
+                : "Set a PO, add at least one product and one DC first"
+            }
+            style={{ padding: "8px 16px", fontSize: 12 }}
+          >
+            {submitting ? "Submitting…" : "✓ Submit & Save to PO List"}
+          </button>
+        </div>
         <p className="hint" style={{ marginBottom: 12 }}>
           Upload the Quikfoods shipment CSV or Excel for the active brand tab. All quantities are{" "}
           <strong>automatically ÷ 10</strong> (the spreadsheet stores ×10 of the actual carton count).
