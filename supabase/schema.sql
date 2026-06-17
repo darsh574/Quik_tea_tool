@@ -53,7 +53,10 @@ create table public.sku_master (
   item_description         text,
   group_name               text,
   sub_group                text,
+  series                   text,
+  sachet_count             integer,
   case_pack                integer,
+  alt_uom                  numeric,
 
   -- ── Unit net weight ──
   unit_net_wt_g            numeric,
@@ -71,17 +74,24 @@ create table public.sku_master (
   -- ── Misc unit info ──
   shelf_life_months        numeric,
 
-  -- ── Unit dimensions (inches) ──
-  unit_height_in           numeric,
+  -- ── Unit dimensions (cm + inches) ──
+  unit_length_cm           numeric,
+  unit_height_cm           numeric,
+  unit_width_cm            numeric,
   unit_length_in           numeric,
+  unit_height_in           numeric,
   unit_width_in            numeric,
   unit_gross_wt_g          numeric,
   unit_gross_wt_oz         numeric,
 
   -- ── Case ──
   case_cube_cuft           numeric,
-  case_height_in           numeric,
+  case_cube_cbm            numeric,
+  case_length_cm           numeric,
+  case_height_cm           numeric,
+  case_width_cm            numeric,
   case_length_in           numeric,
+  case_height_in           numeric,
   case_width_in            numeric,
   case_gross_wt_lb         numeric,
   case_gross_wt_kg         numeric,

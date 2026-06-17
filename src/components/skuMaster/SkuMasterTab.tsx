@@ -494,7 +494,7 @@ export default function SkuMasterTab() {
           <div className="qt-sku-toolbar-left">
             <div className="qt-sku-title">SKU Master</div>
             <div className="qt-sku-sub">
-              Central catalogue — 30 columns mirroring your SKU MASTER.xlsx.{" "}
+              Central catalogue — 40 columns mirroring your SKU Master.xlsx.{" "}
               {isAdmin
                 ? "Inline edit, or bulk-import from Excel."
                 : "Read-only — only admins can add, edit, import, or delete SKUs."}

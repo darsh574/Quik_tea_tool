@@ -34,7 +34,10 @@ export interface SkuMasterRow {
   item_description?: string | null;
   group_name?: string | null;
   sub_group?: string | null;
+  series?: string | null;
+  sachet_count?: number | null;
   case_pack?: number | null;
+  alt_uom?: number | null;
 
   // Unit net weight
   unit_net_wt_g?: number | null;
@@ -52,16 +55,23 @@ export interface SkuMasterRow {
   shelf_life_months?: number | null;
 
   // Unit dimensions
-  unit_height_in?: number | null;
+  unit_length_cm?: number | null;
+  unit_height_cm?: number | null;
+  unit_width_cm?: number | null;
   unit_length_in?: number | null;
+  unit_height_in?: number | null;
   unit_width_in?: number | null;
   unit_gross_wt_g?: number | null;
   unit_gross_wt_oz?: number | null;
 
   // Case
   case_cube_cuft?: number | null;
-  case_height_in?: number | null;
+  case_cube_cbm?: number | null;
+  case_length_cm?: number | null;
+  case_height_cm?: number | null;
+  case_width_cm?: number | null;
   case_length_in?: number | null;
+  case_height_in?: number | null;
   case_width_in?: number | null;
   case_gross_wt_lb?: number | null;
   case_gross_wt_kg?: number | null;
