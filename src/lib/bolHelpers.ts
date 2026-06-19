@@ -3,7 +3,7 @@
 // Ported VERBATIM from platform_updt.html (BOL defaults + syncBOLFromSummary).
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { BOL_PREFIX, DEFAULT_P1, DEFAULT_P2 } from "./constants";
+import { BOL_PREFIX, BRAND_CONFIG, DEFAULT_P1, DEFAULT_P2 } from "./constants";
 import type {
   BolForm,
   BolOrder,
@@ -84,6 +84,8 @@ export function syncBolFromBurlington(
     hu_pkg_qty: String(cartons),
     hu_weight: String(weightInt),
     commodity,
+    // Row-2 commodity line: brand name + pallet count (was hard-coded "TJX Marshalls").
+    pallet_summary: `${BRAND_CONFIG[brand].label} - ${palletsInt}`,
     p1Orders,
     p2Orders: [],
   };
@@ -165,6 +167,8 @@ export function syncBolFromSierra(
       cases > 0
         ? `${cases} Cases of Instant Chai Tea Latte premix powder`
         : "",
+    // Row-2 commodity line: brand name + pallet count (was hard-coded "TJX Marshalls").
+    pallet_summary: `${BRAND_CONFIG.sierra.label} - ${pallets}`,
     p1Orders,
     p2Orders: [],
   };
@@ -263,6 +267,8 @@ export function syncBolFromSummary(
     hu_qty: String(Math.round(tot.pallets)),
     hu_qty_p2: String(Math.round(tot.pallets)),
     commodity: Math.round(tot.totalCases) + " Cartons of Instant Chai Tea Latte",
+    // Row-2 commodity line: brand name + pallet count (was hard-coded "TJX Marshalls").
+    pallet_summary: `${BRAND_CONFIG[activeBrand].label} - ${Math.round(tot.pallets)}`,
     p1Orders,
     p2Orders: [],
   };
