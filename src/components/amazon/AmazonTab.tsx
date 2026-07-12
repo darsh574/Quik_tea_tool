@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { MARKETPLACES } from "@/lib/amazon/regions";
+import { listSkuMaster } from "@/lib/skuMaster";
+import type { SkuMasterRow } from "@/lib/types";
 
 interface ConfigStatus {
   hasClientCreds: boolean;
@@ -21,9 +23,86 @@ const REPORT_TYPES = [
   { value: "GET_FBA_FULFILLMENT_REMOVAL_ORDER_DETAIL_DATA", label: "FBA Removal Orders" },
 ];
 
+// ── Pallet & Weight Counter ──
+// Math is ported from the Burlington / Home Goods routing (SimplePoRouting):
+//   layers = qty ÷ Hi (pallet Ti from SKU Master)
+//   stack height = layers × case height (in)
+//   Pallet Count = ROUNDUP( Σ stack height ÷ max pallet height , 0 )
+//   Weight = Σ (qty × case gross wt) + pallet wt × Pallet Count
+const COUNTER_PALLET_WT = 80; // lb per pallet — same default as routing
+const COUNTER_MAX_HEIGHT = 72; // in, max stack height without pallet
+
+interface CounterRow {
+  sku: string;
+  qty: number | "";
+}
+
+function counterRow(): CounterRow {
+  return { sku: "", qty: "" };
+}
+
+function fmt(n: number, digits = 0): string {
+  if (!Number.isFinite(n) || n === 0) return "—";
+  return Number(n.toFixed(digits)).toLocaleString(undefined, {
+    maximumFractionDigits: digits,
+  });
+}
+
 export default function AmazonTab() {
   const [status, setStatus] = useState<ConfigStatus | null>(null);
   const [statusErr, setStatusErr] = useState("");
+
+  // ── Pallet & Weight counter state ──
+  const [rows, setRows] = useState<CounterRow[]>([counterRow(), counterRow()]);
+  const [palletWt, setPalletWt] = useState(COUNTER_PALLET_WT);
+  const [maxHeight, setMaxHeight] = useState(COUNTER_MAX_HEIGHT);
+  const [skus, setSkus] = useState<SkuMasterRow[]>([]);
+  const [skuErr, setSkuErr] = useState("");
+
+  useEffect(() => {
+    listSkuMaster()
+      .then(setSkus)
+      .catch((e) =>
+        setSkuErr(e instanceof Error ? e.message : "Failed to load SKU Master."),
+      );
+  }, []);
+
+  const skuByCode = useMemo(() => {
+    const m = new Map<string, SkuMasterRow>();
+    skus.forEach((s) => m.set((s.item_code || "").toUpperCase(), s));
+    return m;
+  }, [skus]);
+
+  function setRowCount(n: number) {
+    setRows((prev) =>
+      n <= prev.length
+        ? prev.slice(0, n)
+        : [...prev, ...Array.from({ length: n - prev.length }, counterRow)],
+    );
+  }
+
+  function patchRow(i: number, patch: Partial<CounterRow>) {
+    setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+  }
+
+  const counter = useMemo(() => {
+    const perRow = rows.map((r) => {
+      const sku = skuByCode.get(r.sku.toUpperCase().trim());
+      const qty = typeof r.qty === "number" ? r.qty : 0;
+      const gross = sku?.case_gross_wt_lb ?? 0;
+      const height = sku?.case_height_in ?? 0;
+      const hi = sku?.pallet_ti ?? 0;
+      const layers = hi > 0 ? qty / hi : 0;
+      const stackHeight = layers * height;
+      return { sku, qty, weight: qty * gross, stackHeight };
+    });
+    const totalQty = perRow.reduce((a, r) => a + r.qty, 0);
+    const sumWeight = perRow.reduce((a, r) => a + r.weight, 0);
+    const sumStack = perRow.reduce((a, r) => a + r.stackHeight, 0);
+    const pallets = maxHeight > 0 ? Math.ceil(sumStack / maxHeight) : 0;
+    const weight = sumWeight + palletWt * pallets;
+    return { perRow, totalQty, pallets, weight };
+  }, [rows, skuByCode, palletWt, maxHeight]);
 
   // ── Listings editor state ──
   const [sellerId, setSellerId] = useState("");
@@ -126,8 +205,208 @@ export default function AmazonTab() {
 
   return (
     <>
-      {/* ── Status banner ── */}
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
+            .az-counter-table {
+              border-collapse: collapse; width: 100%; max-width: 720px;
+              font-size: 13px; font-variant-numeric: tabular-nums;
+            }
+            .az-counter-table th {
+              padding: 8px 10px; background: #f6f3ec; color: #5a6370;
+              font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em;
+              text-transform: uppercase; text-align: left;
+              border: 1px solid #e6e0d4;
+            }
+            .az-counter-table th.num, .az-counter-table td.num { text-align: right; }
+            .az-counter-table td {
+              padding: 4px 8px; border: 1px solid #e6e0d4; color: #25303f;
+            }
+            .az-counter-table td.derived { background: #fafaf5; font-weight: 600; }
+            .az-counter-table input {
+              width: 100%; padding: 6px 8px; border: 1.5px solid transparent;
+              border-radius: 6px; background: #f6f3ec; font-size: 13px;
+              color: #25303f; font-family: inherit; outline: none;
+              font-variant-numeric: tabular-nums;
+              transition: border-color 0.12s, background 0.12s;
+            }
+            .az-counter-table input:focus {
+              border-color: #0e3a66; background: #fff;
+              box-shadow: 0 0 0 2px rgba(14,58,102,0.1);
+            }
+            .az-counter-table input[type="number"] { text-align: right; }
+            .az-counter-totals {
+              display: flex; gap: 14px; flex-wrap: wrap; margin-top: 16px;
+            }
+            .az-counter-stat {
+              flex: 1; min-width: 150px; padding: 14px 18px;
+              background: #f6f3ec; border: 1px solid #e6e0d4; border-radius: 12px;
+            }
+            .az-counter-stat .lbl {
+              font-size: 10.5px; font-weight: 700; letter-spacing: 0.4px;
+              text-transform: uppercase; color: #6e6960;
+            }
+            .az-counter-stat .val {
+              font-size: 24px; font-weight: 700; color: #0e3a66; margin-top: 4px;
+              font-variant-numeric: tabular-nums;
+            }
+            .az-counter-stat.accent { background: #0e3a66; border-color: #0e3a66; }
+            .az-counter-stat.accent .lbl { color: #b9c9db; }
+            .az-counter-stat.accent .val { color: #fff; }
+            .az-counter-consts {
+              display: flex; gap: 18px; flex-wrap: wrap; align-items: center;
+              margin-top: 14px; font-size: 12px; color: #6e6960;
+            }
+            .az-counter-consts input {
+              width: 70px; padding: 5px 8px; border: 1.5px solid #d6ccb8;
+              border-radius: 6px; background: #f6f3ec; font-size: 12.5px;
+              text-align: right; font-family: inherit; outline: none;
+              font-variant-numeric: tabular-nums;
+            }
+            details.az-legacy { margin-top: 4px; }
+            details.az-legacy > summary {
+              cursor: pointer; list-style: none;
+              padding: 14px 20px; background: #fff;
+              border: 1px solid #e6e0d4; border-radius: 14px;
+              font-weight: 700; font-size: 14px; color: #1a2a3a;
+              user-select: none;
+            }
+            details.az-legacy > summary::before { content: "▸ "; color: #e8593c; }
+            details.az-legacy[open] > summary::before { content: "▾ "; }
+            details.az-legacy[open] > summary {
+              border-radius: 14px 14px 0 0; border-bottom: none;
+            }
+          `,
+        }}
+      />
+
+      {/* ── Pallet & Weight Counter ── */}
       <div className="card first">
+        <div className="section-title">Pallet &amp; Weight Counter</div>
+        <p className="hint" style={{ marginBottom: 12 }}>
+          Pick the number of SKUs, select each SKU and enter its carton count — total
+          quantity, pallet count and weight are computed with the same math as the Home
+          Goods / Burlington routing (SKU Master drives the per-case weight, height and Hi).
+        </p>
+
+        {skuErr && <div className="upload-status err" style={{ display: "block" }}>{skuErr}</div>}
+        {!skuErr && skus.length === 0 && (
+          <p className="hint">No SKUs in the catalogue yet — add them on the SKU Master tab.</p>
+        )}
+
+        <div className="field" style={{ maxWidth: 220, marginBottom: 14 }}>
+          <label>Total number of SKUs</label>
+          <select
+            value={rows.length}
+            onChange={(e) => setRowCount(parseInt(e.target.value, 10))}
+          >
+            {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+              <option key={n} value={n}>{n}</option>
+            ))}
+          </select>
+        </div>
+
+        <datalist id="az-counter-skus">
+          {skus.map((s) => (
+            <option key={s.id} value={s.item_code} label={s.item_description ?? undefined} />
+          ))}
+        </datalist>
+
+        <div style={{ overflowX: "auto" }}>
+          <table className="az-counter-table">
+            <thead>
+              <tr>
+                <th style={{ width: 36 }}>#</th>
+                <th>SKU</th>
+                <th className="num" style={{ width: 130 }}>Count (cartons)</th>
+                <th className="num" style={{ width: 120 }}>Weight (lb)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => {
+                const c = counter.perRow[i];
+                const skuMissing = r.sku.trim() !== "" && !c.sku;
+                return (
+                  <tr key={i}>
+                    <td style={{ color: "#888", fontWeight: 600 }}>{i + 1}</td>
+                    <td>
+                      <input
+                        list="az-counter-skus"
+                        value={r.sku}
+                        onChange={(e) => patchRow(i, { sku: e.target.value.toUpperCase() })}
+                        placeholder="QT12"
+                        style={skuMissing ? { color: "#c94628" } : undefined}
+                        title={
+                          skuMissing
+                            ? "This SKU isn't in the SKU Master — weight/pallets can't be computed."
+                            : c.sku?.item_description ?? ""
+                        }
+                      />
+                    </td>
+                    <td className="num">
+                      <input
+                        type="number"
+                        min={0}
+                        value={r.qty}
+                        onChange={(e) =>
+                          patchRow(i, {
+                            qty: e.target.value === "" ? "" : parseInt(e.target.value, 10) || 0,
+                          })
+                        }
+                      />
+                    </td>
+                    <td className="num derived">{fmt(c.weight)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="az-counter-totals">
+          <div className="az-counter-stat">
+            <div className="lbl">Total Qty</div>
+            <div className="val">{fmt(counter.totalQty)}</div>
+          </div>
+          <div className="az-counter-stat accent">
+            <div className="lbl">Pallet Count</div>
+            <div className="val">{fmt(counter.pallets)}</div>
+          </div>
+          <div className="az-counter-stat accent">
+            <div className="lbl">Weight (lb)</div>
+            <div className="val">{fmt(counter.weight)}</div>
+          </div>
+        </div>
+
+        <div className="az-counter-consts">
+          <span>
+            Pallet wt (lb){" "}
+            <input
+              type="number"
+              min={0}
+              value={palletWt || ""}
+              onChange={(e) => setPalletWt(parseFloat(e.target.value) || 0)}
+            />
+          </span>
+          <span>
+            Max pallet height (in){" "}
+            <input
+              type="number"
+              min={0}
+              value={maxHeight || ""}
+              onChange={(e) => setMaxHeight(parseFloat(e.target.value) || 0)}
+            />
+          </span>
+          <span>Weight includes {fmt(palletWt)} lb per pallet, same as routing.</span>
+        </div>
+      </div>
+
+      {/* ── Legacy SP-API tools — collapsed by default ── */}
+      <details className="az-legacy">
+        <summary>Amazon SP-API tools — connection, listings &amp; reports</summary>
+
+      {/* ── Status banner ── */}
+      <div className="card first" style={{ borderRadius: "0 0 0 0" }}>
         <div className="section-title">Amazon SP-API Connection</div>
         {statusErr && <div className="upload-status err">{statusErr}</div>}
         {!status && !statusErr && <div className="hint">Checking credentials…</div>}
@@ -250,6 +529,7 @@ export default function AmazonTab() {
           </div>
         )}
       </div>
+      </details>
     </>
   );
 }
