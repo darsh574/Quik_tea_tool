@@ -81,18 +81,25 @@ export default function AmazonTab() {
       { label: "10 CT", spec: spec10, qty: typeof qty10 === "number" ? qty10 : 0 },
     ].map((r) => {
       const ti = r.spec?.pallet_ti ?? 0;
+      const hi = r.spec?.pallet_hi ?? 0;
       const layers = ti > 0 ? r.qty / ti : 0;
       const stackHeight = layers * (r.spec?.case_height_in ?? 0);
-      const perPallet =
-        ti > 0 && (r.spec?.case_height_in ?? 0) > 0 && maxHeight > 0
-          ? Math.floor(maxHeight / (r.spec!.case_height_in as number)) * ti
-          : 0;
+      // Boxes per pallet = the SKU Master "Cases/Pallet" column (= Ti × Hi).
+      const perPallet = r.spec?.pallet_cases_per_pallet || ti * hi;
       return { ...r, weight: r.qty * (r.spec?.case_gross_wt_lb ?? 0), stackHeight, perPallet };
     });
     const totalQty = perRow.reduce((a, r) => a + r.qty, 0);
     const sumWeight = perRow.reduce((a, r) => a + r.weight, 0);
     const sumStack = perRow.reduce((a, r) => a + r.stackHeight, 0);
-    const pallets = maxHeight > 0 ? Math.ceil(sumStack / maxHeight) : 0;
+    // A pallet is full at whichever comes first: 72 in of stacked cartons
+    // (Case "Height (in)" column) or the Cases/Pallet limit (88 / 165).
+    const palletFraction = perRow.reduce(
+      (a, r) => a + (r.perPallet > 0 ? r.qty / r.perPallet : 0),
+      0,
+    );
+    const pallets = Math.ceil(
+      Math.max(maxHeight > 0 ? sumStack / maxHeight : 0, palletFraction),
+    );
     const weight = sumWeight + palletWt * pallets;
     return { perRow, spec20, spec10, totalQty, pallets, weight };
   }, [skus, qty20, qty10, palletWt, maxHeight]);
