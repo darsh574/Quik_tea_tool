@@ -17,9 +17,10 @@ import {
   saveSierraPoRecord,
 } from "@/lib/history";
 import { SIERRA_WEIGHT_PER_UNIT, SIERRA_WEIGHT_BASES } from "@/lib/constants";
+import { listSkuMaster } from "@/lib/skuMaster";
 import { OrdersTable } from "@/components/bol/OrdersTable";
 import PoPicker from "@/components/PoPicker";
-import type { BolForm, BrandKey } from "@/lib/types";
+import type { BolForm, BrandKey, SkuMasterRow } from "@/lib/types";
 
 /** Brands that use the line-item (Burlington / DD Discount) routing flow. */
 const SIMPLE_PO_BRANDS: BrandKey[] = ["burlington", "ddDiscount"];
@@ -34,6 +35,29 @@ export default function BolTab() {
   const setBol = useShipmentStore((s) => s.setBol);
   const setBolOrders = useShipmentStore((s) => s.setBolOrders);
   const bumpDataVersion = useShipmentStore((s) => s.bumpDataVersion);
+
+  // SKU Master catalogue — needed so the Burlington/DD Discount BOL sync can
+  // compute case heights (and thus Total Pallets) the same way the routing tab
+  // does. Loaded once on mount; failures degrade gracefully to an empty map.
+  const [skus, setSkus] = useState<SkuMasterRow[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    listSkuMaster()
+      .then((rows) => {
+        if (!cancelled) setSkus(rows);
+      })
+      .catch(() => {
+        /* non-fatal: totals fall back to a 0 pallet preview */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const skuByCode = useMemo(() => {
+    const m = new Map<string, SkuMasterRow>();
+    skus.forEach((s) => m.set((s.item_code || "").toUpperCase(), s));
+    return m;
+  }, [skus]);
 
   const [mode, setMode] = useState<"editable" | "static">("editable");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -150,26 +174,33 @@ export default function BolTab() {
     const palletConstants = b.palletConstants ?? { cuFt: 0, wt: 0, maxHeight: 0 };
     let final = 0,
       sumWeight = 0,
-      sumLayers = 0,
-      sumHeight = 0;
-    // NOTE: weight/cu ft per line need SKU master lookups, which BolTab doesn't
-    // load. The user's confirmed mappings are PO + pallets + total cartons.
-    // Total weight is computed from `finalQty × case_gross_wt_lb` — we don't
-    // have that here, so we fall back to (pallet wt × pallets) only when SKU
-    // weights aren't known. The Submit on the Routing tab persists the full
-    // totals to Supabase; this is just for an in-progress preview.
+      sumStackHeight = 0;
+    // Mirror SimplePoRouting: per line, layers = finalQty / Hi (pallet Ti),
+    // stacked height = layers × case height (in). Hi and case height come from
+    // the SKU Master via the product code (Hi falls back to the catalogue
+    // value when the row has no per-row override). Weight uses case gross wt.
     lines.forEach((l) => {
       const f = typeof l.finalQty === "number" ? l.finalQty : 0;
-      const hi = typeof l.hi === "number" ? l.hi : 0;
+      const sku = skuByCode.get((l.product || "").toUpperCase().trim());
+      const catalogHi =
+        typeof sku?.pallet_ti === "number" ? sku.pallet_ti : 0;
+      const hi =
+        typeof l.hi === "number" && l.hi > 0 ? l.hi : catalogHi;
+      const height =
+        typeof sku?.case_height_in === "number" ? sku.case_height_in : 0;
+      const grossLb =
+        typeof sku?.case_gross_wt_lb === "number" ? sku.case_gross_wt_lb : 0;
+      const layers = hi > 0 ? f / hi : 0;
       final += f;
-      sumLayers += hi > 0 ? f / hi : 0;
-      sumHeight += 0; // unknown without SKU master
+      sumWeight += f * grossLb;
+      sumStackHeight += layers * height;
     });
     const maxH = palletConstants.maxHeight;
-    const pallets = maxH > 0 && sumHeight > 0 ? (sumLayers * sumHeight) / maxH : 0;
+    // Total Pallets = ROUNDUP( Σ(layers × height) / max-pallet-height , 0 )
+    const pallets = maxH > 0 ? Math.ceil(sumStackHeight / maxH) : 0;
     const weight = sumWeight + palletConstants.wt * pallets;
     return { finalQty: final, weight, pallets };
-  }, [st]);
+  }, [st, skuByCode]);
 
   /** Compute Sierra totals from the matrix (mirrors SierraRouting.tsx). */
   const sierraTotals = useMemo(() => {

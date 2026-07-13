@@ -184,6 +184,7 @@ export default function SimplePoRouting({ brand }: { brand: BrandKey }) {
 
   // ── Compute per-row derived values ──
   const computed = useMemo(() => {
+    const maxH = nz(maxPalletHeight);
     return lines.map((line) => {
       const sku = skuByCode.get((line.product || "").toUpperCase().trim());
       const orig = nz(line.origQty);
@@ -193,10 +194,18 @@ export default function SimplePoRouting({ brand }: { brand: BrandKey }) {
       const grossLb = nz(sku?.case_gross_wt_lb);
       const cube = nz(sku?.case_cube_cuft);
       const height = nz(sku?.case_height_in);
-      // Hi is per-row state — user can override the SKU master default.
-      const hiDisplay = nz(line.hi);
-      const layers = hiDisplay > 0 ? final / hiDisplay : 0;
-      const pallets = hiDisplay > 0 ? layers / hiDisplay : 0;
+      // Hi (pallet Ti — cases per layer) is auto-fetched from the SKU Master
+      // via the SKU/Product mapping. A non-blank per-row value overrides the
+      // catalogue default for this row only.
+      const catalogHi = nz(sku?.pallet_ti);
+      const hiVal =
+        line.hi !== "" && line.hi != null ? nz(line.hi) : catalogHi;
+      const layers = hiVal > 0 ? final / hiVal : 0;
+      // Each row's stacked height = # layers × case height (in).
+      const stackHeight = layers * height;
+      // Row's pallet-equivalent = stacked height ÷ max pallet height (the
+      // un-rounded fraction this row contributes to the PO's Total Pallets).
+      const pallets = maxH > 0 ? stackHeight / maxH : 0;
       const weightLb = final * grossLb;
       const cuFt = final * cube;
       return {
@@ -210,10 +219,11 @@ export default function SimplePoRouting({ brand }: { brand: BrandKey }) {
         layers,
         pallets,
         height,
-        hiDisplay,
+        hiVal,
+        stackHeight,
       };
     });
-  }, [lines, skuByCode]);
+  }, [lines, skuByCode, maxPalletHeight]);
 
   const totals = useMemo(() => {
     let orig = 0,
@@ -222,7 +232,8 @@ export default function SimplePoRouting({ brand }: { brand: BrandKey }) {
       sumWeight = 0,
       sumCu = 0,
       sumLayers = 0,
-      sumHeight = 0;
+      sumHeight = 0,
+      sumStackHeight = 0;
     computed.forEach((c) => {
       orig += c.orig;
       final += c.final;
@@ -231,13 +242,14 @@ export default function SimplePoRouting({ brand }: { brand: BrandKey }) {
       sumCu += c.cuFt;
       sumLayers += c.layers;
       sumHeight += c.height;
+      sumStackHeight += c.stackHeight;
     });
     const maxH = nz(maxPalletHeight);
     // Burlington / DD Discount pallet math:
-    //   pallets = (Σ layers × Σ height) / max-pallet-height-without-pallet
-    //   weight  = Σ weight + pallet wt × pallets
-    //   cu ft   = Σ cu ft  + pallet cu ft × pallets
-    const pallets = maxH > 0 ? (sumLayers * sumHeight) / maxH : 0;
+    //   Total Pallets = ROUNDUP( Σ(layers × height) / max-pallet-height , 0 )
+    //   weight        = Σ weight + pallet wt × pallets
+    //   cu ft         = Σ cu ft  + pallet cu ft × pallets
+    const pallets = maxH > 0 ? Math.ceil(sumStackHeight / maxH) : 0;
     const weight = sumWeight + nz(palletWt) * pallets;
     const cu = sumCu + nz(palletCuFt) * pallets;
     const fulfillment = orig > 0 ? (final / orig) * 100 : 0;
@@ -313,6 +325,13 @@ export default function SimplePoRouting({ brand }: { brand: BrandKey }) {
           },
           lines: filledLines.map((l) => {
             const suffix = effectiveSuffix(l);
+            // Persist the effective Hi: the per-row override when set, else the
+            // SKU Master catalogue value (pallet Ti) for the row's product.
+            const catalogHi = nz(
+              skuByCode.get((l.product || "").toUpperCase().trim())?.pallet_ti,
+            );
+            const hi =
+              l.hi !== "" && l.hi != null ? nz(l.hi) : catalogHi;
             return {
               _id: l._id,
               suffix,
@@ -322,7 +341,7 @@ export default function SimplePoRouting({ brand }: { brand: BrandKey }) {
               product: l.product.trim().toUpperCase(),
               origQty: nz(l.origQty),
               finalQty: nz(l.finalQty),
-              hi: nz(l.hi),
+              hi,
             };
           }),
         },
@@ -848,18 +867,18 @@ export default function SimplePoRouting({ brand }: { brand: BrandKey }) {
                     <td className="derived num">{fmtNum(c.layers, 1) || "—"}</td>
                     <td className="derived num">{fmtNum(c.pallets, 2) || "—"}</td>
                     <td className="derived num">{fmtNum(c.height, 1) || "—"}</td>
-                    <td className={line.hi !== "" ? "manual num" : "manual-empty num"}>
+                    <td className={c.hiVal > 0 ? "manual num" : "manual-empty num"}>
                       <input
                         type="number"
                         min={0}
-                        value={line.hi}
+                        value={line.hi !== "" ? line.hi : c.hiVal || ""}
                         onChange={(e) =>
                           patchLine(line._id, {
                             hi:
                               e.target.value === "" ? "" : parseInt(e.target.value, 10) || 0,
                           })
                         }
-                        title="Pulled from SKU Master · click to override for this row only"
+                        title="Auto-filled from SKU Master (pallet Ti) · click to override for this row only"
                       />
                     </td>
 
@@ -903,7 +922,7 @@ export default function SimplePoRouting({ brand }: { brand: BrandKey }) {
                 <td className="num">{fmtNum(totals.weight, 0) || "—"}</td>
                 <td className="num">{fmtNum(totals.cu, 2) || "—"}</td>
                 <td className="num">{fmtNum(totals.layers, 1) || "—"}</td>
-                <td className="num">{fmtNum(totals.pallets, 2) || "—"}</td>
+                <td className="num">{fmtInt(totals.pallets) || "—"}</td>
                 <td className="num">{fmtNum(totals.sumHeight, 1) || "—"}</td>
                 <td></td>
                 <td></td>
