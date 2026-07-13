@@ -34,12 +34,14 @@ const REPORT_TYPES = [
 const COUNTER_PALLET_WT = 80; // lb per pallet — same default as routing
 const COUNTER_MAX_HEIGHT = 72; // in, max stack height per pallet
 
-// ponytail: specs come from the first SKU Master row of each case-pack size —
+// ponytail: specs come from the first SKU Master row of each sachet-count size —
 // all 20 CT (and all 10 CT) cartons share the same dims/weight in the sheet.
-function specFor(skus: SkuMasterRow[], casePack: number): SkuMasterRow | undefined {
+// NOTE: "20 CT / 10 CT" is the Sachet count column, NOT Case Pack (that's the
+// cartons-per-case "x 10" and is 10 for nearly every SKU).
+function specFor(skus: SkuMasterRow[], sachetCount: number): SkuMasterRow | undefined {
   return skus.find(
     (s) =>
-      s.case_pack === casePack &&
+      s.sachet_count === sachetCount &&
       (s.pallet_ti ?? 0) > 0 &&
       (s.case_height_in ?? 0) > 0 &&
       (s.case_gross_wt_lb ?? 0) > 0,
