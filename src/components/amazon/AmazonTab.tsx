@@ -25,20 +25,25 @@ const REPORT_TYPES = [
 
 // ── Pallet & Weight Counter ──
 // Math is ported from the Burlington / Home Goods routing (SimplePoRouting):
-//   layers = qty ÷ Hi (pallet Ti from SKU Master)
+//   layers = qty ÷ Ti (pallet Ti from SKU Master)
 //   stack height = layers × case height (in)
-//   Pallet Count = ROUNDUP( Σ stack height ÷ max pallet height , 0 )
+//   Pallet Count = ROUNDUP( Σ stack height ÷ 72 in , 0 )
 //   Weight = Σ (qty × case gross wt) + pallet wt × Pallet Count
+// The per-pallet box limits (88 for 20 CT, 165 for 10 CT) fall out of the
+// height cap: Ti × Hi boxes = Hi layers × case height ≈ 72 in.
 const COUNTER_PALLET_WT = 80; // lb per pallet — same default as routing
-const COUNTER_MAX_HEIGHT = 72; // in, max stack height without pallet
+const COUNTER_MAX_HEIGHT = 72; // in, max stack height per pallet
 
-interface CounterRow {
-  sku: string;
-  qty: number | "";
-}
-
-function counterRow(): CounterRow {
-  return { sku: "", qty: "" };
+// ponytail: specs come from the first SKU Master row of each case-pack size —
+// all 20 CT (and all 10 CT) cartons share the same dims/weight in the sheet.
+function specFor(skus: SkuMasterRow[], casePack: number): SkuMasterRow | undefined {
+  return skus.find(
+    (s) =>
+      s.case_pack === casePack &&
+      (s.pallet_ti ?? 0) > 0 &&
+      (s.case_height_in ?? 0) > 0 &&
+      (s.case_gross_wt_lb ?? 0) > 0,
+  );
 }
 
 function fmt(n: number, digits = 0): string {
@@ -53,7 +58,8 @@ export default function AmazonTab() {
   const [statusErr, setStatusErr] = useState("");
 
   // ── Pallet & Weight counter state ──
-  const [rows, setRows] = useState<CounterRow[]>([counterRow(), counterRow()]);
+  const [qty20, setQty20] = useState<number | "">("");
+  const [qty10, setQty10] = useState<number | "">("");
   const [palletWt, setPalletWt] = useState(COUNTER_PALLET_WT);
   const [maxHeight, setMaxHeight] = useState(COUNTER_MAX_HEIGHT);
   const [skus, setSkus] = useState<SkuMasterRow[]>([]);
@@ -67,42 +73,29 @@ export default function AmazonTab() {
       );
   }, []);
 
-  const skuByCode = useMemo(() => {
-    const m = new Map<string, SkuMasterRow>();
-    skus.forEach((s) => m.set((s.item_code || "").toUpperCase(), s));
-    return m;
-  }, [skus]);
-
-  function setRowCount(n: number) {
-    setRows((prev) =>
-      n <= prev.length
-        ? prev.slice(0, n)
-        : [...prev, ...Array.from({ length: n - prev.length }, counterRow)],
-    );
-  }
-
-  function patchRow(i: number, patch: Partial<CounterRow>) {
-    setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
-  }
-
   const counter = useMemo(() => {
-    const perRow = rows.map((r) => {
-      const sku = skuByCode.get(r.sku.toUpperCase().trim());
-      const qty = typeof r.qty === "number" ? r.qty : 0;
-      const gross = sku?.case_gross_wt_lb ?? 0;
-      const height = sku?.case_height_in ?? 0;
-      const hi = sku?.pallet_ti ?? 0;
-      const layers = hi > 0 ? qty / hi : 0;
-      const stackHeight = layers * height;
-      return { sku, qty, weight: qty * gross, stackHeight };
+    const spec20 = specFor(skus, 20);
+    const spec10 = specFor(skus, 10);
+    const perRow = [
+      { label: "20 CT", spec: spec20, qty: typeof qty20 === "number" ? qty20 : 0 },
+      { label: "10 CT", spec: spec10, qty: typeof qty10 === "number" ? qty10 : 0 },
+    ].map((r) => {
+      const ti = r.spec?.pallet_ti ?? 0;
+      const layers = ti > 0 ? r.qty / ti : 0;
+      const stackHeight = layers * (r.spec?.case_height_in ?? 0);
+      const perPallet =
+        ti > 0 && (r.spec?.case_height_in ?? 0) > 0 && maxHeight > 0
+          ? Math.floor(maxHeight / (r.spec!.case_height_in as number)) * ti
+          : 0;
+      return { ...r, weight: r.qty * (r.spec?.case_gross_wt_lb ?? 0), stackHeight, perPallet };
     });
     const totalQty = perRow.reduce((a, r) => a + r.qty, 0);
     const sumWeight = perRow.reduce((a, r) => a + r.weight, 0);
     const sumStack = perRow.reduce((a, r) => a + r.stackHeight, 0);
     const pallets = maxHeight > 0 ? Math.ceil(sumStack / maxHeight) : 0;
     const weight = sumWeight + palletWt * pallets;
-    return { perRow, totalQty, pallets, weight };
-  }, [rows, skuByCode, palletWt, maxHeight]);
+    return { perRow, spec20, spec10, totalQty, pallets, weight };
+  }, [skus, qty20, qty10, palletWt, maxHeight]);
 
   // ── Listings editor state ──
   const [sellerId, setSellerId] = useState("");
@@ -284,81 +277,61 @@ export default function AmazonTab() {
       <div className="card first">
         <div className="section-title">Pallet &amp; Weight Counter</div>
         <p className="hint" style={{ marginBottom: 12 }}>
-          Pick the number of SKUs, select each SKU and enter its carton count — total
-          quantity, pallet count and weight are computed with the same math as the Home
-          Goods / Burlington routing (SKU Master drives the per-case weight, height and Hi).
+          Enter the 20 CT and 10 CT carton counts — pallet count and weight are computed
+          with the same math as the Home Goods / Burlington routing. The SKU Master drives
+          the per-case height, Ti and gross weight; a pallet is full at {fmt(maxHeight)}″
+          of stacked cartons.
         </p>
 
         {skuErr && <div className="upload-status err" style={{ display: "block" }}>{skuErr}</div>}
         {!skuErr && skus.length === 0 && (
           <p className="hint">No SKUs in the catalogue yet — add them on the SKU Master tab.</p>
         )}
-
-        <div className="field" style={{ maxWidth: 220, marginBottom: 14 }}>
-          <label>Total number of SKUs</label>
-          <select
-            value={rows.length}
-            onChange={(e) => setRowCount(parseInt(e.target.value, 10))}
-          >
-            {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
-              <option key={n} value={n}>{n}</option>
-            ))}
-          </select>
-        </div>
-
-        <datalist id="az-counter-skus">
-          {skus.map((s) => (
-            <option key={s.id} value={s.item_code} label={s.item_description ?? undefined} />
-          ))}
-        </datalist>
+        {skus.length > 0 && !counter.spec20 && (
+          <div className="upload-status err" style={{ display: "block" }}>
+            No 20 CT SKU with pallet Ti, case height &amp; gross weight found in the SKU
+            Master — 20 CT cartons can&apos;t be computed.
+          </div>
+        )}
+        {skus.length > 0 && !counter.spec10 && (
+          <div className="upload-status err" style={{ display: "block" }}>
+            No 10 CT SKU with pallet Ti, case height &amp; gross weight found in the SKU
+            Master — 10 CT cartons can&apos;t be computed.
+          </div>
+        )}
 
         <div style={{ overflowX: "auto" }}>
           <table className="az-counter-table">
             <thead>
               <tr>
-                <th style={{ width: 36 }}>#</th>
-                <th>SKU</th>
-                <th className="num" style={{ width: 130 }}>Count (cartons)</th>
+                <th>Pack</th>
+                <th className="num" style={{ width: 140 }}>Count (cartons)</th>
+                <th className="num" style={{ width: 130 }}>Boxes / pallet</th>
                 <th className="num" style={{ width: 120 }}>Weight (lb)</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((r, i) => {
-                const c = counter.perRow[i];
-                const skuMissing = r.sku.trim() !== "" && !c.sku;
-                return (
-                  <tr key={i}>
-                    <td style={{ color: "#888", fontWeight: 600 }}>{i + 1}</td>
-                    <td>
-                      <input
-                        list="az-counter-skus"
-                        value={r.sku}
-                        onChange={(e) => patchRow(i, { sku: e.target.value.toUpperCase() })}
-                        placeholder="QT12"
-                        style={skuMissing ? { color: "#c94628" } : undefined}
-                        title={
-                          skuMissing
-                            ? "This SKU isn't in the SKU Master — weight/pallets can't be computed."
-                            : c.sku?.item_description ?? ""
-                        }
-                      />
-                    </td>
-                    <td className="num">
-                      <input
-                        type="number"
-                        min={0}
-                        value={r.qty}
-                        onChange={(e) =>
-                          patchRow(i, {
-                            qty: e.target.value === "" ? "" : parseInt(e.target.value, 10) || 0,
-                          })
-                        }
-                      />
-                    </td>
-                    <td className="num derived">{fmt(c.weight)}</td>
-                  </tr>
-                );
-              })}
+              {counter.perRow.map((r, i) => (
+                <tr key={r.label}>
+                  <td style={{ fontWeight: 600 }} title={r.spec?.item_code ?? ""}>
+                    {r.label}
+                  </td>
+                  <td className="num">
+                    <input
+                      type="number"
+                      min={0}
+                      value={i === 0 ? qty20 : qty10}
+                      onChange={(e) => {
+                        const v =
+                          e.target.value === "" ? ("" as const) : parseInt(e.target.value, 10) || 0;
+                        (i === 0 ? setQty20 : setQty10)(v);
+                      }}
+                    />
+                  </td>
+                  <td className="num derived">{fmt(r.perPallet)}</td>
+                  <td className="num derived">{fmt(r.weight)}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
