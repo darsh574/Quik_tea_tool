@@ -306,7 +306,27 @@ export default function SimplePoRouting({ brand }: { brand: BrandKey }) {
       ),
     [lines],
   );
-  const canSubmit = poNumber.trim() !== "" && filledLines.length > 0;
+  // Burlington splits one PO across DCs 01/02/03/04 purely by Suffix, so a
+  // filled line without one has nowhere to ship — the label adapter drops it
+  // and the cartons silently disappear from the labels + ZIP. Block the save.
+  // DD Discount ships to a single DC, so a blank suffix is legal there.
+  const suffixRequired = brand === "burlington";
+  const linesMissingSuffix = useMemo(
+    () =>
+      suffixRequired
+        ? filledLines.filter((l) => (effectiveSuffix(l) || "").trim() === "")
+        : [],
+    [suffixRequired, filledLines, effectiveSuffix],
+  );
+  const canSubmit =
+    poNumber.trim() !== "" && filledLines.length > 0 && linesMissingSuffix.length === 0;
+  const submitBlockedMsg = !poNumber.trim()
+    ? "Set the PO number above."
+    : filledLines.length === 0
+    ? "Add at least one line item with a product or qty."
+    : `Fill the Suffix (DC #) on ${linesMissingSuffix.length} line${
+        linesMissingSuffix.length !== 1 ? "s" : ""
+      } — without it those cartons won't reach the labels.`;
 
   async function handleSubmit() {
     setSubmitting(true);
@@ -608,11 +628,7 @@ export default function SimplePoRouting({ brand }: { brand: BrandKey }) {
               className="qt-simple-btn accent"
               onClick={handleSubmit}
               disabled={submitting || !canSubmit}
-              title={
-                canSubmit
-                  ? "Save this PO to the shared list"
-                  : "Set the header PO above and add at least one line item first"
-              }
+              title={canSubmit ? "Save this PO to the shared list" : submitBlockedMsg}
             >
               {submitting ? "Submitting…" : "✓ Submit"}
             </button>
@@ -946,21 +962,13 @@ export default function SimplePoRouting({ brand }: { brand: BrandKey }) {
             className="qt-simple-btn accent"
             onClick={handleSubmit}
             disabled={submitting || !canSubmit}
-            title={
-              canSubmit
-                ? "Save this PO to the shared list"
-                : "Set the header PO above and add at least one line item first"
-            }
+            title={canSubmit ? "Save this PO to the shared list" : submitBlockedMsg}
             style={{ padding: "10px 22px", fontSize: 13 }}
           >
             {submitting ? "Submitting…" : "✓ Submit & Save to PO List"}
           </button>
           {!canSubmit && (
-            <span style={{ fontSize: 12, color: "#a47712" }}>
-              {!poNumber.trim()
-                ? "Set the PO number above."
-                : "Add at least one line item with a product or qty."}
-            </span>
+            <span style={{ fontSize: 12, color: "#a47712" }}>{submitBlockedMsg}</span>
           )}
         </div>
         {submitMsg && (

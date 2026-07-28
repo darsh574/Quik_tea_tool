@@ -7,6 +7,7 @@ import {
   buildLabelElements,
   buildLabelElementsDdDiscount,
   buildLabelElementsSierra,
+  poDigits,
 } from "@/lib/formulas";
 import { generateLabelZip, countLabelPdfs, downloadBlob } from "@/lib/labelPdf";
 import { burlingtonToShipmentState } from "@/lib/burlingtonAdapter";
@@ -100,7 +101,17 @@ export default function LabelsTab() {
       effectiveSt.dcs[0] ||
       (firstMasterKey
         ? { num: firstMasterKey, ...dcMaster[firstMasterKey] }
-        : { num: "882", code: "TUC", name: "HomeGoods Distribution Center", street: "", city: "" });
+        : {
+            // Brands with no DC master (DD Discount) land here when nothing is
+            // loaded. Use the brand's own DC name — the old hardcoded
+            // "HomeGoods Distribution Center" placeholder read as a real
+            // brand mix-up on a DD's PO.
+            num: "",
+            code: "",
+            name: BRAND_CONFIG[activeBrand].defaultDCName,
+            street: "",
+            city: "",
+          });
     const prod = effectiveSt.products[0] || "QT15";
     const q =
       effectiveSt.qty[prod] && effectiveSt.qty[prod][dc.num]
@@ -109,7 +120,12 @@ export default function LabelsTab() {
     const from = effectiveSt.from || "Quikfoods Inc";
     if (useDdLayout) {
       // Reconstruct the full per-line PO for the preview: master + suffix.
-      const fullPo = effectiveSt.po + (dc.poPrefix || dc.num);
+      // Mirrors `labelPdf.ts` exactly — including the no-suffix case, where the
+      // label shows the bare master PO (NOT master + dc.num, which would leak
+      // the synthetic single-DC key into the preview).
+      const fullPo = dc.poPrefix
+        ? poDigits(effectiveSt.po) + dc.poPrefix
+        : effectiveSt.po;
       const sku = skuLookup.get(prod.toUpperCase().trim());
       return buildLabelElementsDdDiscount(from, dc, fullPo, q, 1, sku);
     }

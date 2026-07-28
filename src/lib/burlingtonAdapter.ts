@@ -36,6 +36,21 @@ const DC_DEFAULTS: Partial<Record<BrandKey, { name: string; street: string; city
   },
 };
 
+/**
+ * Brands that ship to a single DC, where the routing table's Suffix column is
+ * optional. A line with a blank suffix lands on this synthetic DC and its label
+ * PO stays the bare master PO (empty `poPrefix` — both `labelPdf` and the
+ * preview fall back to `PO # {master}`).
+ *
+ * Burlington is deliberately NOT here: it splits a PO across DCs 01/02/03/04
+ * purely by suffix, so a blank suffix there is a data-entry error, not a
+ * single-DC shipment. `SimplePoRouting` blocks Submit in that case.
+ */
+const SINGLE_DC_BRANDS: BrandKey[] = ["ddDiscount"];
+
+/** dcMap / qty key + ZIP folder name for a blank-suffix single-DC line. */
+const SINGLE_DC_KEY = "EC";
+
 export function burlingtonToShipmentState(
   burlington: BurlingtonShipment,
   fallbackDcName: string,
@@ -49,6 +64,8 @@ export function burlingtonToShipmentState(
   const dcStreet = dcDefaults?.street ?? "";
   const dcCity = dcDefaults?.city ?? "";
 
+  const singleDc = brand ? SINGLE_DC_BRANDS.includes(brand) : false;
+
   burlington.lines.forEach((l) => {
     const product = (l.product || "").trim().toUpperCase();
     // suffix is the DC number — fall back to the legacy `po.slice(-2)` for
@@ -57,13 +74,19 @@ export function burlingtonToShipmentState(
       l.suffix ?? (l.po ? l.po.slice(-2) : "")
     ).trim();
     const final = typeof l.finalQty === "number" ? l.finalQty : 0;
-    if (!product || !suffix || final <= 0) return;
+    // A blank suffix drops the line for multi-DC brands (there'd be no DC to
+    // ship it to). Single-DC brands keep it on the default DC instead.
+    if (!product || final <= 0 || (!suffix && !singleDc)) return;
+
+    // Blank suffix ⇒ default DC, and an empty `poPrefix` so the label PO line
+    // renders as the master PO alone rather than "{master}{suffix}".
+    const key = suffix || SINGLE_DC_KEY;
 
     productSet.add(product);
-    if (!dcMap.has(suffix)) {
-      dcMap.set(suffix, {
-        num: suffix,
-        code: suffix,
+    if (!dcMap.has(key)) {
+      dcMap.set(key, {
+        num: key,
+        code: key,
         name: dcName,
         street: dcStreet,
         city: dcCity,
@@ -71,7 +94,7 @@ export function burlingtonToShipmentState(
       });
     }
     if (!qty[product]) qty[product] = {};
-    qty[product][suffix] = (qty[product][suffix] || 0) + final;
+    qty[product][key] = (qty[product][key] || 0) + final;
   });
 
   return {
