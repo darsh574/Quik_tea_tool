@@ -7,7 +7,7 @@
 import { jsPDF } from "jspdf";
 import JSZip from "jszip";
 import { SPEC, BRAND_CONFIG } from "./constants";
-import { poDigits } from "./formulas";
+import { poDigits, round2 } from "./formulas";
 import type { BrandKey, ShipmentState, LabelFormat, SkuMasterRow } from "./types";
 
 /** Brands that use the DD Discount label template (different from HG/TJX/MAR). */
@@ -50,8 +50,8 @@ export interface LabelZipResult {
  * Generate the full label ZIP for a brand state + label format.
  * `onProgress(done, total, pct)` is called after each PDF is added.
  *
- * `skuLookup` is only consulted for DD Discount labels (Vendor Style # / case
- * pack / item description / unit weight come from the SKU Master). The HG /
+ * `skuLookup` is only consulted for DD Discount labels (case pack / item
+ * description / unit weight come from the SKU Master). The HG /
  * TJX / Marshalls flow ignores it entirely — those labels are driven by the
  * editable LabelFormat fields as before.
  */
@@ -178,17 +178,17 @@ export async function generateLabelZip(
           safeText(doc, ddPoLine, x, y, SP.FULL_MAX_W);
           y += SP.LG;
 
-          if (sku?.gtin_upc_case_code) {
-            safeText(doc, `Vendor Style # ${sku.gtin_upc_case_code}`, x, y, SP.FULL_MAX_W);
+          // Vendor Style # is the routing product SKU (QT12 / QT15 / …).
+          if (prod) {
+            safeText(doc, `Vendor Style # ${prod}`, x, y, SP.FULL_MAX_W);
             y += SP.LG;
           }
-          if (sku?.case_pack && sku?.item_description) {
+          if (sku?.item_description) {
             // Long product names wrap to a second line rather than being
             // truncated with "…". jsPDF's splitTextToSize measures the
             // current font (Helvetica bold 12pt at this point) so the wrap
             // point reflects the actual rendered width.
-            const productLine = `${sku.case_pack}CT ${sku.item_description}`;
-            const wrapped = doc.splitTextToSize(productLine, SP.FULL_MAX_W) as string[];
+            const wrapped = doc.splitTextToSize(sku.item_description, SP.FULL_MAX_W) as string[];
             for (const line of wrapped) {
               doc.text(line, x, y);
               y += SP.LG;
@@ -200,7 +200,7 @@ export async function generateLabelZip(
           }
           if (typeof sku?.unit_net_wt_oz === "number") {
             doc.setFont(SP.FONT, "normal");
-            safeText(doc, `Unit Size: ${sku.unit_net_wt_oz} oz, Color : None`, x, y, SP.FULL_MAX_W);
+            safeText(doc, `Unit Size: ${round2(sku.unit_net_wt_oz)} oz, Color : None`, x, y, SP.FULL_MAX_W);
           }
         } else {
           // ── HG / TJX / Marshalls template (unchanged from the original). ──

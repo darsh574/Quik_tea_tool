@@ -127,7 +127,7 @@ export default function LabelsTab() {
         ? poDigits(effectiveSt.po) + dc.poPrefix
         : effectiveSt.po;
       const sku = skuLookup.get(prod.toUpperCase().trim());
-      return buildLabelElementsDdDiscount(from, dc, fullPo, q, 1, sku);
+      return buildLabelElementsDdDiscount(from, dc, fullPo, prod, q, 1, sku);
     }
     if (useSierraLayout) {
       return buildLabelElementsSierra(from, dc, effectiveSt.po, prod, q, 1, format);

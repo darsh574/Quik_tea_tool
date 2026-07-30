@@ -285,6 +285,11 @@ function wrapTextByChars(text: string, maxChars: number): string[] {
   return lines;
 }
 
+/** Max 2 decimals, no trailing zeros — 8.465907… → 8.47, 8.5 → 8.5. */
+export function round2(n: number): number {
+  return Number(n.toFixed(2));
+}
+
 /**
  * DD Discount label layout — distinct from the HG / TJX / Marshalls template.
  * Pulls extra metadata from the SKU Master (Vendor Style #, case pack, item
@@ -297,16 +302,17 @@ function wrapTextByChars(text: string, maxChars: number): string[] {
  *   1707 Shearer Drive, Carlisle, PA 17013
  *   ─────────
  *   PO # 80778126
- *   Vendor Style # 855664004990          (gtin_upc_case_code)
- *   10CT QUIKTEA CARDAMOM CHAI TEA LATTE (case_pack + item_description)
+ *   Vendor Style # QT12                  (the routing product SKU)
+ *   QUIKTEA CARDAMOM CHAI TEA LATTE      (item_description)
  *   Total Units per carton: 10           (case_pack)
- *   Unit Size: 8.47 oz, Color : None     (unit_net_wt_oz)
+ *   Unit Size: 8.47 oz, Color : None     (unit_net_wt_oz, 2 decimals)
  *                Carton #N of M
  */
 export function buildLabelElementsDdDiscount(
   from: string,
   dc: DC,
   po: string,
+  prod: string,
   qty: number,
   cartonNum: number,
   sku: SkuMasterRow | undefined,
@@ -339,11 +345,11 @@ export function buildLabelElementsDdDiscount(
   els.push({ text: `PO # ${po}`, x, y, fs: FN, fw: "700" });
   y += SP.LG;
 
-  // Vendor Style # is the GTIN/UPC case code from the SKU master — not the
-  // SKU `item_code` (QT12). Skip the line entirely if no GTIN is on file.
-  if (sku?.gtin_upc_case_code) {
+  // Vendor Style # is the routing product SKU (QT12 / QT15 / …), not the
+  // GTIN/UPC case code.
+  if (prod) {
     els.push({
-      text: `Vendor Style # ${sku.gtin_upc_case_code}`,
+      text: `Vendor Style # ${prod}`,
       x,
       y,
       fs: FN,
@@ -352,10 +358,10 @@ export function buildLabelElementsDdDiscount(
     y += SP.LG;
   }
 
-  // "{case_pack}CT {item_description}" — e.g. "10CT QUIKTEA CARDAMOM CHAI TEA LATTE"
+  // Item description only — no "{case_pack}CT " prefix.
   // Long descriptions wrap to a second line instead of getting "…" truncated.
-  if (sku?.case_pack && sku?.item_description) {
-    const productText = `${sku.case_pack}CT ${sku.item_description}`;
+  if (sku?.item_description) {
+    const productText = sku.item_description;
     // Word-wrap heuristic for 12pt Helvetica across the full label width
     // (~406pt usable → ~60 chars at the bold weight used here, allowing
     // some safety margin for wide glyphs).
@@ -379,7 +385,7 @@ export function buildLabelElementsDdDiscount(
 
   if (typeof sku?.unit_net_wt_oz === "number") {
     els.push({
-      text: `Unit Size: ${sku.unit_net_wt_oz} oz, Color : None`,
+      text: `Unit Size: ${round2(sku.unit_net_wt_oz)} oz, Color : None`,
       x,
       y,
       fs: FN,
