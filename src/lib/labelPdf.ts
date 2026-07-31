@@ -178,9 +178,9 @@ export async function generateLabelZip(
           safeText(doc, ddPoLine, x, y, SP.FULL_MAX_W);
           y += SP.LG;
 
-          // Vendor Style # is the routing product SKU (QT12 / QT15 / …).
+          // The routing product SKU (QT12 / QT15 / …).
           if (prod) {
-            safeText(doc, `Vendor Style # ${prod}`, x, y, SP.FULL_MAX_W);
+            safeText(doc, `SKU : ${prod}`, x, y, SP.FULL_MAX_W);
             y += SP.LG;
           }
           if (sku?.item_description) {

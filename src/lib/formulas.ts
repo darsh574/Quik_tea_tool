@@ -302,7 +302,7 @@ export function round2(n: number): number {
  *   1707 Shearer Drive, Carlisle, PA 17013
  *   ─────────
  *   PO # 80778126
- *   Vendor Style # QT12                  (the routing product SKU)
+ *   SKU : QT12                           (the routing product SKU)
  *   QUIKTEA CARDAMOM CHAI TEA LATTE      (item_description)
  *   Total Units per carton: 10           (case_pack)
  *   Unit Size: 8.47 oz, Color : None     (unit_net_wt_oz, 2 decimals)
@@ -345,11 +345,10 @@ export function buildLabelElementsDdDiscount(
   els.push({ text: `PO # ${po}`, x, y, fs: FN, fw: "700" });
   y += SP.LG;
 
-  // Vendor Style # is the routing product SKU (QT12 / QT15 / …), not the
-  // GTIN/UPC case code.
+  // The routing product SKU (QT12 / QT15 / …), not the GTIN/UPC case code.
   if (prod) {
     els.push({
-      text: `Vendor Style # ${prod}`,
+      text: `SKU : ${prod}`,
       x,
       y,
       fs: FN,
