@@ -111,6 +111,8 @@ export function syncBolFromSierra(
     totalWeight: number;
     totalPallets: number;
   },
+  /** Brand using the Sierra matrix — only affects the brand name / DC fallback. */
+  brand: BrandKey = "sierra",
 ): Partial<BolForm> {
   const po = (sierra.poNumber ?? "").trim();
   const cases = Math.max(0, Math.round(totals.totalCases));
@@ -168,14 +170,14 @@ export function syncBolFromSierra(
         ? `${cases} Cases of Instant Chai Tea Latte premix powder`
         : "",
     // Row-2 commodity line: brand name + pallet count (was hard-coded "TJX Marshalls").
-    pallet_summary: `${BRAND_CONFIG.sierra.label} - ${pallets}`,
+    pallet_summary: `${BRAND_CONFIG[brand].label} - ${pallets}`,
     p1Orders,
     p2Orders: [],
   };
 
   if (dcsWithData.length === 1) {
     const dc = dcsWithData[0];
-    patch.st_name = dc.name || "Sierra Distribution Center";
+    patch.st_name = dc.name || BRAND_CONFIG[brand].defaultDCName;
     patch.st_location = dc.num;
     patch.st_address = dc.street || "";
     patch.st_csz = dc.city || "";

@@ -9,6 +9,7 @@ export type BrandKey =
   | "marshalls"
   | "burlington"
   | "sierra"
+  | "lotless"
   | "ddDiscount";
 
 /** The dashboard workflow tabs — switched client-side, no route navigation. */

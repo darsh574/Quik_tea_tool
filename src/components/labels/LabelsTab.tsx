@@ -39,7 +39,7 @@ const LABEL_DISABLED_BRANDS: BrandKey[] = ["burlington"];
 const ADAPTER_BRANDS: BrandKey[] = ["ddDiscount"];
 
 /** Brands whose routing data lives in `sierra` and needs Sierra's adapter. */
-const SIERRA_ADAPTER_BRANDS: BrandKey[] = ["sierra"];
+const SIERRA_ADAPTER_BRANDS: BrandKey[] = ["sierra", "lotless"];
 
 export default function LabelsTab() {
   const activeBrand = useShipmentStore((s) => s.activeBrand);

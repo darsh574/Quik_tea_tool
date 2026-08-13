@@ -14,13 +14,14 @@ import type { BrandKey } from "@/lib/types";
 /** Brands that use the new line-item / Burlington-style routing format. */
 const SIMPLE_PO_BRANDS: BrandKey[] = ["burlington", "ddDiscount"];
 /** Brands that use the Sierra-style products-per-DC matrix. */
-const SIERRA_BRANDS: BrandKey[] = ["sierra"];
+const SIERRA_BRANDS: BrandKey[] = ["sierra", "lotless"];
 
 // Tab order matches the dashboard reference: 3 new brands first, then the
 // fully-wired HG / TJX / Marshalls.
 const BRAND_TABS: BrandKey[] = [
   "burlington",
   "sierra",
+  "lotless",
   "ddDiscount",
   "homegoods",
   "tjx",

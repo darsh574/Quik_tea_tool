@@ -61,6 +61,11 @@ function fmtInt(n: number): string {
 
 export default function SierraRouting({ brand }: { brand: BrandKey }) {
   const brandLabel = BRAND_CONFIG[brand]?.label ?? brand;
+  /** Blank shipment for this brand — keeps the DC name brand-correct on reset. */
+  const blankShipment = useCallback(
+    () => defaultSierraShipment(BRAND_CONFIG[brand]?.defaultDCName),
+    [brand],
+  );
 
   const stored = useShipmentStore((s) => s.brandState[brand].sierra);
   const setSierra = useShipmentStore((s) => s.setSierra);
@@ -251,7 +256,7 @@ export default function SierraRouting({ brand }: { brand: BrandKey }) {
 
   function resetAll() {
     if (!window.confirm("Clear the PO and all line items?")) return;
-    setSierra(defaultSierraShipment());
+    setSierra(blankShipment());
     setSubmitMsg(null);
   }
 
@@ -290,7 +295,7 @@ export default function SierraRouting({ brand }: { brand: BrandKey }) {
       });
       // Reset so the form is clean for the next PO. The submitted PO is
       // still recallable from History.
-      setSierra(defaultSierraShipment());
+      setSierra(blankShipment());
     } catch (err) {
       setSubmitMsg({
         kind: "err",

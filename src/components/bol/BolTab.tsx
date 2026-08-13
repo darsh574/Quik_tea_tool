@@ -16,7 +16,7 @@ import {
   saveSimplePoRecord,
   saveSierraPoRecord,
 } from "@/lib/history";
-import { SIERRA_WEIGHT_PER_UNIT, SIERRA_WEIGHT_BASES } from "@/lib/constants";
+import { BRAND_CONFIG, SIERRA_WEIGHT_PER_UNIT, SIERRA_WEIGHT_BASES } from "@/lib/constants";
 import { listSkuMaster } from "@/lib/skuMaster";
 import { OrdersTable } from "@/components/bol/OrdersTable";
 import PoPicker from "@/components/PoPicker";
@@ -25,7 +25,7 @@ import type { BolForm, BrandKey, SkuMasterRow } from "@/lib/types";
 /** Brands that use the line-item (Burlington / DD Discount) routing flow. */
 const SIMPLE_PO_BRANDS: BrandKey[] = ["burlington", "ddDiscount"];
 /** Brands using the Sierra matrix routing flow. */
-const SIERRA_BRANDS: BrandKey[] = ["sierra"];
+const SIERRA_BRANDS: BrandKey[] = ["sierra", "lotless"];
 
 export default function BolTab() {
   const activeBrand = useShipmentStore((s) => s.activeBrand);
@@ -281,16 +281,17 @@ export default function BolTab() {
     // ── Sierra: matrix routing → pulls confident BOL fields from sierra. ──
     if (SIERRA_BRANDS.includes(activeBrand)) {
       const s = st.sierra;
+      const brandLabel = BRAND_CONFIG[activeBrand]?.label ?? activeBrand;
       if (!s || (s.poNumber ?? "").trim() === "") {
-        flashToast("Fill the Sierra routing (PO + final cases) first.");
+        flashToast(`Fill the ${brandLabel} routing (PO + final cases) first.`);
         return;
       }
       const t = sierraTotals ?? { totalCases: 0, totalWeight: 0, totalPallets: 0 };
       if (t.totalCases <= 0) {
-        flashToast("Enter at least one final case count on the Sierra routing.");
+        flashToast(`Enter at least one final case count on the ${brandLabel} routing.`);
         return;
       }
-      const patch = syncBolFromSierra(s, t);
+      const patch = syncBolFromSierra(s, t, activeBrand);
       setBol(patch);
       skipNextAutoSave.current = true;
       setAutoSaveOn(true);
@@ -305,7 +306,7 @@ export default function BolTab() {
         setLastSavedAt(new Date());
         setAutoSaveStatus("saved");
         bumpDataVersion();
-        flashToast("Synced from Sierra routing · auto-save is now ON.");
+        flashToast(`Synced from ${brandLabel} routing · auto-save is now ON.`);
       } catch (err) {
         const msg = err instanceof Error ? err.message : "unknown error";
         // eslint-disable-next-line no-console

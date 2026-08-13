@@ -13,7 +13,7 @@ import type { BrandKey, ShipmentState, LabelFormat, SkuMasterRow } from "./types
 /** Brands that use the DD Discount label template (different from HG/TJX/MAR). */
 const DD_LABEL_BRANDS: BrandKey[] = ["ddDiscount"];
 /** Brands that use the Sierra label template (HG-style with format tweaks). */
-const SIERRA_LABEL_BRANDS: BrandKey[] = ["sierra"];
+const SIERRA_LABEL_BRANDS: BrandKey[] = ["sierra", "lotless"];
 
 /** Truncate text with an ellipsis so it never overflows maxW (jsPDF measure). */
 function safeText(doc: jsPDF, text: string, x: number, y: number, maxW?: number): void {

@@ -9,6 +9,7 @@ import type { BrandKey, PoRecord, TabKey } from "@/lib/types";
 const BRAND_KEYS: BrandKey[] = [
   "burlington",
   "sierra",
+  "lotless",
   "ddDiscount",
   "homegoods",
   "tjx",

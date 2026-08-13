@@ -109,6 +109,24 @@ Copy `.env.example` → `.env.local`. Required: the three `NEXT_PUBLIC_SUPABASE_
 `.env.local` is gitignored — never commit secrets. Default login after seeding:
 `admin` / `admin123`.
 
+## "yo" = pull latest
+
+When the user's message is just **`yo`**, run `git pull origin main` in the repo
+root and report what came in (or "already up to date"). Nothing else.
+
+The GitHub PAT is baked into the `origin` remote URL in `.git/config`, so plain
+`git pull` / `git push` authenticate with no extra flags. The token is NOT
+written here on purpose: `CLAUDE.md` is tracked, and GitHub push protection
+blocks any push containing a PAT — it would break pushing and get the token
+auto-revoked. `.git/config` is never committed.
+
+If a pull fails with `403` / `Invalid username or token`, the PAT has expired —
+ask the user for a new one, then:
+
+```bash
+git remote set-url origin https://<NEW_TOKEN>@github.com/darsh574/Quik_tea_tool.git
+```
+
 ## Deploy
 
 Supabase hosts the DB/Auth; Vercel hosts the app (frontend + API routes). See

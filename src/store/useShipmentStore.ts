@@ -279,7 +279,7 @@ export const useShipmentStore = create<ShipmentStore>()(
     {
       name: "quikt-shipment-store",
       // Persist everything so a refresh keeps the in-progress shipment.
-      version: 6,
+      version: 7,
       // v1 → v2: extended BrandKey with burlington / sierra / ddDiscount.
       // v2 → v3: added the `burlington` field on ShipmentState for the
       // line-item routing flow + BOL sync. Backfill it for the two brands
@@ -323,6 +323,15 @@ export const useShipmentStore = create<ShipmentStore>()(
           const bs = p.brandState;
           if (bs.sierra && !bs.sierra.sierra) {
             bs.sierra = { ...bs.sierra, sierra: defaultSierraShipment() };
+          }
+        }
+        if (version < 7 && p.brandState) {
+          // v6 → v7: added the `lotless` brand (Sierra-style matrix, own state).
+          // Persisted state predates the key, so seed it from the defaults —
+          // without this `brandState.lotless` is undefined and SierraRouting's
+          // selector throws on the Lotless tab.
+          if (!p.brandState.lotless) {
+            p.brandState.lotless = makeDefaultBrandState().lotless;
           }
         }
         return p;
