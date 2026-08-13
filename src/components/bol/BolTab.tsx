@@ -27,6 +27,28 @@ const SIMPLE_PO_BRANDS: BrandKey[] = ["burlington", "ddDiscount"];
 /** Brands using the Sierra matrix routing flow. */
 const SIERRA_BRANDS: BrandKey[] = ["sierra", "lotless"];
 
+/**
+ * Text input bound to a BolForm key.
+ *
+ * MUST stay at module scope. Declared inside BolTab it was a *new* component
+ * type on every render, so React unmounted and remounted the <input> on each
+ * keystroke — the field lost focus after one character. Reading the store here
+ * instead of taking `bol`/`setBol` props also keeps each field re-rendering
+ * only when its own value changes.
+ */
+function B({ k, ...rest }: { k: keyof BolForm } & React.InputHTMLAttributes<HTMLInputElement>) {
+  const value = useShipmentStore((s) => s.bol[k]);
+  const setBol = useShipmentStore((s) => s.setBol);
+  return (
+    <input
+      type="text"
+      value={(value as string) ?? ""}
+      onChange={(e) => setBol({ [k]: e.target.value })}
+      {...rest}
+    />
+  );
+}
+
 export default function BolTab() {
   const activeBrand = useShipmentStore((s) => s.activeBrand);
   const st = useShipmentStore((s) => s.brandState[s.activeBrand]);
@@ -131,18 +153,6 @@ export default function BolTab() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bol, autoSaveOn]);
-
-  // bound text input bound to a BolForm key
-  function B({ k, ...rest }: { k: keyof BolForm } & React.InputHTMLAttributes<HTMLInputElement>) {
-    return (
-      <input
-        type="text"
-        value={(bol[k] as string) ?? ""}
-        onChange={(e) => setBol({ [k]: e.target.value })}
-        {...rest}
-      />
-    );
-  }
 
   function flashToast(msg: string) {
     setToast(msg);
