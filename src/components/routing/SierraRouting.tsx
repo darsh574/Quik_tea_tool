@@ -22,6 +22,7 @@ import { useShipmentStore } from "@/store/useShipmentStore";
 import {
   BRAND_CONFIG,
   defaultSierraShipment,
+  LOTLESS_DCS,
   newSierraLine,
   SIERRA_WEIGHT_PER_UNIT,
   SIERRA_WEIGHT_BASES,
@@ -63,7 +64,11 @@ export default function SierraRouting({ brand }: { brand: BrandKey }) {
   const brandLabel = BRAND_CONFIG[brand]?.label ?? brand;
   /** Blank shipment for this brand — keeps the DC name brand-correct on reset. */
   const blankShipment = useCallback(
-    () => defaultSierraShipment(BRAND_CONFIG[brand]?.defaultDCName),
+    () =>
+      defaultSierraShipment(
+        BRAND_CONFIG[brand]?.defaultDCName,
+        brand === "lotless" ? LOTLESS_DCS : undefined,
+      ),
     [brand],
   );
 
@@ -548,20 +553,26 @@ export default function SierraRouting({ brand }: { brand: BrandKey }) {
               <tr>
                 {dcs.map((d) => (
                   <th key={`o-${d.num}`} className="section-orig">
-                    {d.code}
-                    <div style={{ fontSize: 9, color: "#aaa", fontWeight: 500 }}>
-                      {d.num}
-                    </div>
+                    {/* Brands with a single unnamed DC (Lotless) have no
+                        code/number to show — label the column generically. */}
+                    {d.code || "Units"}
+                    {d.code && (
+                      <div style={{ fontSize: 9, color: "#aaa", fontWeight: 500 }}>
+                        {d.num}
+                      </div>
+                    )}
                   </th>
                 ))}
                 <th className="section-orig">Cases</th>
                 <th className="section-orig">Units</th>
                 {dcs.map((d) => (
                   <th key={`f-${d.num}`} className="section-final">
-                    {d.code}
-                    <div style={{ fontSize: 9, color: "#aaa", fontWeight: 500 }}>
-                      {d.num}
-                    </div>
+                    {d.code || "Cases"}
+                    {d.code && (
+                      <div style={{ fontSize: 9, color: "#aaa", fontWeight: 500 }}>
+                        {d.num}
+                      </div>
+                    )}
                   </th>
                 ))}
                 <th className="section-final">Cases</th>
@@ -569,7 +580,7 @@ export default function SierraRouting({ brand }: { brand: BrandKey }) {
                 <th className="section-cuft">Cu ft / case</th>
                 {dcs.map((d) => (
                   <th key={`c-${d.num}`} className="section-cuft">
-                    Cu ft {d.code}
+                    Cu ft {d.code || "total"}
                   </th>
                 ))}
               </tr>

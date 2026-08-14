@@ -11,6 +11,7 @@ import {
   BRAND_CONFIG,
   defaultBurlingtonShipment,
   defaultSierraShipment,
+  LOTLESS_DCS,
 } from "@/lib/constants";
 import { defaultBolForm } from "@/lib/bolHelpers";
 import { defaultLabelFormat } from "@/lib/labelFormat";
@@ -279,7 +280,7 @@ export const useShipmentStore = create<ShipmentStore>()(
     {
       name: "quikt-shipment-store",
       // Persist everything so a refresh keeps the in-progress shipment.
-      version: 7,
+      version: 8,
       // v1 → v2: extended BrandKey with burlington / sierra / ddDiscount.
       // v2 → v3: added the `burlington` field on ShipmentState for the
       // line-item routing flow + BOL sync. Backfill it for the two brands
@@ -333,6 +334,16 @@ export const useShipmentStore = create<ShipmentStore>()(
           if (!p.brandState.lotless) {
             p.brandState.lotless = makeDefaultBrandState().lotless;
           }
+        }
+        if (version < 8 && p.brandState?.lotless?.sierra) {
+          // v7 → v8: Lotless dropped the CHE 0810 / ASH 0860 DC split for a
+          // single unnamed DC. Persisted state still carries the two Sierra
+          // DCs, so replace them (per-DC quantities keyed by the old nums go
+          // with them — Lotless POs are re-entered against the single DC).
+          p.brandState.lotless.sierra = defaultSierraShipment(
+            BRAND_CONFIG.lotless.defaultDCName,
+            LOTLESS_DCS,
+          );
         }
         return p;
       },

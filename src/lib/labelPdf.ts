@@ -84,7 +84,8 @@ export async function generateLabelZip(
       const q = (st.qty[prod] && st.qty[prod][dc.num]) ? st.qty[prod][dc.num] : 0;
       if (!q) continue;
 
-      const dcFolder = poFolder.folder(dc.num)!;
+      // No DC number (Lotless) → no per-DC subfolder, PDFs sit under the PO.
+      const dcFolder = dc.num ? poFolder.folder(dc.num)! : poFolder;
 
       const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: [PW, PH] });
 
@@ -112,7 +113,13 @@ export async function generateLabelZip(
           y += SP.LG;
 
           doc.setFont(SP.FONT, "bold");
-          safeText(doc, `To: ${dc.name} #${dc.num}`, x, y, SP.FULL_MAX_W);
+          safeText(
+            doc,
+            `To: ${dc.name}${dc.num ? ` #${dc.num}` : ""}`,
+            x,
+            y,
+            SP.FULL_MAX_W,
+          );
           y += SP.LG;
 
           doc.setFont(SP.FONT, "normal");
@@ -251,7 +258,9 @@ export async function generateLabelZip(
       }
 
       // PDF naming: HG_TUC_DC882_QT12_PO_631004_Labels_6x4.pdf
-      const pdfName = `${pdfPrefix}_${dc.code}_DC${dc.num}_${prod}_PO_${poDigitsLocal}_Labels_6x4.pdf`;
+      // A DC with no code/number (Lotless) simply drops those two segments.
+      const dcSegs = [dc.code, dc.num && `DC${dc.num}`].filter(Boolean).join("_");
+      const pdfName = `${[pdfPrefix, dcSegs, prod].filter(Boolean).join("_")}_PO_${poDigitsLocal}_Labels_6x4.pdf`;
       dcFolder.file(pdfName, doc.output("arraybuffer"));
       done++;
       const pct = totalPdfs ? Math.round((done / totalPdfs) * 100) : 100;

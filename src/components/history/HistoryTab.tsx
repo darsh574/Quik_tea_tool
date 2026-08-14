@@ -397,7 +397,9 @@ function RecordRow({
               </span>
               <span>
                 <strong>DCs:</strong>{" "}
-                {rec.shipment_state.dcs.map((d) => `${d.num} ${d.code}`).join(", ") || "—"}
+                {rec.shipment_state.dcs
+                  .map((d) => `${d.num} ${d.code}`.trim() || d.name)
+                  .join(", ") || "—"}
               </span>
               {tot && (
                 <>

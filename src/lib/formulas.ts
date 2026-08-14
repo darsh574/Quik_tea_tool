@@ -221,7 +221,15 @@ export function buildLabelElementsSierra(
 
   els.push({ text: `From: ${from}`, x, y, fs: FN, fw: "400" });
   y += SP.LG;
-  els.push({ text: `To: ${dc.name} #${dc.num}`, x, y, fs: FN, fw: "700" });
+  // A DC with no number (Lotless) drops the `#num` suffix here and the
+  // `{num}` prefix on the PO line below.
+  els.push({
+    text: `To: ${dc.name}${dc.num ? ` #${dc.num}` : ""}`,
+    x,
+    y,
+    fs: FN,
+    fw: "700",
+  });
   y += SP.LG;
 
   const addressLine = [dc.street, dc.city]

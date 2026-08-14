@@ -57,12 +57,23 @@ export const SIERRA_DEFAULT_PRODUCTS = [
   "QT15", "QT75", "QT55", "QT13", "QT16", "QT54", "QT37",
 ];
 
+/** Lotless ships to a single DC — no CHE 0810 / ASH 0860 split. Blank
+ *  `num`/`code` keep the DC identity off the routing table and off the label
+ *  (`PO # {num}{po}` degrades to `PO # {po}`). */
+export const LOTLESS_DCS: SierraDc[] = [
+  { num: "", code: "", state: "", name: "Lotless Distribution Center", street: "", city: "" },
+];
+
 /** `dcName` overrides the DC label so brands sharing the Sierra matrix
- *  (Lotless) get their own name on the routing + labels. */
-export function defaultSierraShipment(dcName = "Sierra Distribution Center"): SierraShipment {
+ *  (Lotless) get their own name on the routing + labels; `dcs` lets them
+ *  bring their own DC list. */
+export function defaultSierraShipment(
+  dcName = "Sierra Distribution Center",
+  dcs: SierraDc[] = SIERRA_DCS,
+): SierraShipment {
   return {
     poNumber: "",
-    dcs: SIERRA_DCS.map((d) => ({ ...d, name: dcName })),
+    dcs: dcs.map((d) => ({ ...d, name: dcName })),
     lines: SIERRA_DEFAULT_PRODUCTS.map((p) => newSierraLine(p)),
   };
 }
@@ -286,7 +297,7 @@ export function makeDefaultBrandState(): Record<BrandKey, ShipmentState> {
     marshalls: { products: [], dcs: [], qty: {}, qtyFinal: {}, qtyFinalTotal: {}, po: "", from: "Quikfoods Inc", skuMeta: {} },
     burlington: { products: [], dcs: [], qty: {}, qtyFinal: {}, qtyFinalTotal: {}, po: "", from: "Quikfoods Inc", skuMeta: {}, burlington: defaultBurlingtonShipment() },
     sierra: { products: [], dcs: [], qty: {}, qtyFinal: {}, qtyFinalTotal: {}, po: "", from: "Quikfoods Inc", skuMeta: {}, sierra: defaultSierraShipment() },
-    lotless: { products: [], dcs: [], qty: {}, qtyFinal: {}, qtyFinalTotal: {}, po: "", from: "Quikfoods Inc", skuMeta: {}, sierra: defaultSierraShipment(BRAND_CONFIG.lotless.defaultDCName) },
+    lotless: { products: [], dcs: [], qty: {}, qtyFinal: {}, qtyFinalTotal: {}, po: "", from: "Quikfoods Inc", skuMeta: {}, sierra: defaultSierraShipment(BRAND_CONFIG.lotless.defaultDCName, LOTLESS_DCS) },
     ddDiscount: { products: [], dcs: [], qty: {}, qtyFinal: {}, qtyFinalTotal: {}, po: "", from: "Quikfoods Inc", skuMeta: {}, burlington: defaultBurlingtonShipment() },
   };
 }
