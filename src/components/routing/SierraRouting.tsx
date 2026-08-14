@@ -91,6 +91,13 @@ export default function SierraRouting({ brand }: { brand: BrandKey }) {
   const sierra = stored ?? FALLBACK_SIERRA;
   const poNumber = sierra.poNumber ?? "";
   const dcs: SierraDc[] = Array.isArray(sierra.dcs) ? sierra.dcs : FALLBACK_SIERRA.dcs;
+  /**
+   * Single unnamed DC (Lotless): the per-DC column would just duplicate the
+   * section's Cases/Units totals, so it's dropped and the input moves into the
+   * total column instead — Original is typed as units, Final as cases.
+   */
+  const singleDc = dcs.length === 1 && !dcs[0].code;
+  const soleDc = dcs[0]?.num ?? "";
   const lines = useMemo(
     () => (Array.isArray(sierra.lines) ? sierra.lines : []),
     [sierra.lines],
@@ -230,6 +237,21 @@ export default function SierraRouting({ brand }: { brand: BrandKey }) {
       finalPalletPerDc,
     };
   }, [totals.origPerDc, totals.finalPerDc, dcs]);
+
+  /** A summary row's cells for one section: one column per DC plus the two
+   *  blank Cases/Units columns — or, with a single unnamed DC, one merged
+   *  cell spanning them (there is no separate per-DC column to fill). */
+  const sumCells = (key: string, val: (dcNum: string) => string) =>
+    singleDc ? (
+      <td colSpan={2}>{val(soleDc)}</td>
+    ) : (
+      <>
+        {dcs.map((d) => (
+          <td key={`${key}-${d.num}`}>{val(d.num)}</td>
+        ))}
+        <td colSpan={2}></td>
+      </>
+    );
 
   function patchLine(id: string, patch: Partial<SierraLine>) {
     setLines(lines.map((r) => (r._id === id ? { ...r, ...patch } : r)));
@@ -539,10 +561,10 @@ export default function SierraRouting({ brand }: { brand: BrandKey }) {
               <tr>
                 <th rowSpan={2} style={{ width: 36 }}>#</th>
                 <th rowSpan={2}>Product</th>
-                <th className="section-orig" colSpan={dcs.length + 2}>
+                <th className="section-orig" colSpan={singleDc ? 2 : dcs.length + 2}>
                   Original (units)
                 </th>
-                <th className="section-final" colSpan={dcs.length + 2}>
+                <th className="section-final" colSpan={singleDc ? 2 : dcs.length + 2}>
                   Final (cases)
                 </th>
                 <th className="section-cuft" colSpan={dcs.length + 1}>
@@ -551,30 +573,26 @@ export default function SierraRouting({ brand }: { brand: BrandKey }) {
                 <th rowSpan={2} style={{ width: 32 }}></th>
               </tr>
               <tr>
-                {dcs.map((d) => (
-                  <th key={`o-${d.num}`} className="section-orig">
-                    {/* Brands with a single unnamed DC (Lotless) have no
-                        code/number to show — label the column generically. */}
-                    {d.code || "Units"}
-                    {d.code && (
+                {!singleDc &&
+                  dcs.map((d) => (
+                    <th key={`o-${d.num}`} className="section-orig">
+                      {d.code}
                       <div style={{ fontSize: 9, color: "#aaa", fontWeight: 500 }}>
                         {d.num}
                       </div>
-                    )}
-                  </th>
-                ))}
+                    </th>
+                  ))}
                 <th className="section-orig">Cases</th>
                 <th className="section-orig">Units</th>
-                {dcs.map((d) => (
-                  <th key={`f-${d.num}`} className="section-final">
-                    {d.code || "Cases"}
-                    {d.code && (
+                {!singleDc &&
+                  dcs.map((d) => (
+                    <th key={`f-${d.num}`} className="section-final">
+                      {d.code}
                       <div style={{ fontSize: 9, color: "#aaa", fontWeight: 500 }}>
                         {d.num}
                       </div>
-                    )}
-                  </th>
-                ))}
+                    </th>
+                  ))}
                 <th className="section-final">Cases</th>
                 <th className="section-final">Units</th>
                 <th className="section-cuft">Cu ft / case</th>
@@ -608,54 +626,94 @@ export default function SierraRouting({ brand }: { brand: BrandKey }) {
                       />
                     </td>
                     {/* Original per DC */}
-                    {dcs.map((d) => {
-                      const v = line.orig?.[d.num] ?? "";
-                      return (
-                        <td key={`o-${d.num}`} className="orig">
-                          <input
-                            type="number"
-                            min={0}
-                            value={v}
-                            onChange={(e) =>
-                              patchOrig(
-                                line._id,
-                                d.num,
-                                e.target.value === ""
-                                  ? ""
-                                  : parseInt(e.target.value, 10) || 0,
-                              )
-                            }
-                          />
-                        </td>
-                      );
-                    })}
+                    {!singleDc &&
+                      dcs.map((d) => {
+                        const v = line.orig?.[d.num] ?? "";
+                        return (
+                          <td key={`o-${d.num}`} className="orig">
+                            <input
+                              type="number"
+                              min={0}
+                              value={v}
+                              onChange={(e) =>
+                                patchOrig(
+                                  line._id,
+                                  d.num,
+                                  e.target.value === ""
+                                    ? ""
+                                    : parseInt(e.target.value, 10) || 0,
+                                )
+                              }
+                            />
+                          </td>
+                        );
+                      })}
                     <td className="derived">
                       {fmtNum(c.origCasesTotal, 1) || "—"}
                     </td>
-                    <td className="derived">{fmtInt(c.origUnitsTotal) || "—"}</td>
+                    {singleDc ? (
+                      <td className="orig">
+                        <input
+                          type="number"
+                          min={0}
+                          value={line.orig?.[soleDc] ?? ""}
+                          onChange={(e) =>
+                            patchOrig(
+                              line._id,
+                              soleDc,
+                              e.target.value === ""
+                                ? ""
+                                : parseInt(e.target.value, 10) || 0,
+                            )
+                          }
+                        />
+                      </td>
+                    ) : (
+                      <td className="derived">{fmtInt(c.origUnitsTotal) || "—"}</td>
+                    )}
                     {/* Final per DC */}
-                    {dcs.map((d) => {
-                      const v = line.final?.[d.num] ?? "";
-                      return (
-                        <td key={`f-${d.num}`} className="final">
-                          <input
-                            type="number"
-                            min={0}
-                            value={v}
-                            onChange={(e) =>
-                              patchFinal(
-                                line._id,
-                                d.num,
-                                e.target.value === ""
-                                  ? ""
-                                  : parseInt(e.target.value, 10) || 0,
-                              )
-                            }
-                          />
-                        </td>
-                      );
-                    })}
-                    <td className="derived">{fmtInt(c.finalCasesTotal) || "—"}</td>
+                    {!singleDc &&
+                      dcs.map((d) => {
+                        const v = line.final?.[d.num] ?? "";
+                        return (
+                          <td key={`f-${d.num}`} className="final">
+                            <input
+                              type="number"
+                              min={0}
+                              value={v}
+                              onChange={(e) =>
+                                patchFinal(
+                                  line._id,
+                                  d.num,
+                                  e.target.value === ""
+                                    ? ""
+                                    : parseInt(e.target.value, 10) || 0,
+                                )
+                              }
+                            />
+                          </td>
+                        );
+                      })}
+                    {singleDc ? (
+                      <td className="final">
+                        <input
+                          type="number"
+                          min={0}
+                          value={line.final?.[soleDc] ?? ""}
+                          onChange={(e) =>
+                            patchFinal(
+                              line._id,
+                              soleDc,
+                              e.target.value === ""
+                                ? ""
+                                : parseInt(e.target.value, 10) || 0,
+                            )
+                          }
+                        />
+                      </td>
+                    ) : (
+                      <td className="derived">{fmtInt(c.finalCasesTotal) || "—"}</td>
+                    )}
                     <td className="derived">{fmtInt(c.finalUnitsTotal) || "—"}</td>
                     {/* Cubic feet */}
                     <td className="cuft">
@@ -683,14 +741,16 @@ export default function SierraRouting({ brand }: { brand: BrandKey }) {
               {/* Grand totals */}
               <tr className="total-row">
                 <td colSpan={2} style={{ textAlign: "right" }}>Total</td>
-                {dcs.map((d) => (
-                  <td key={`to-${d.num}`}>{fmtInt(totals.origPerDc[d.num]) || "—"}</td>
-                ))}
+                {!singleDc &&
+                  dcs.map((d) => (
+                    <td key={`to-${d.num}`}>{fmtInt(totals.origPerDc[d.num]) || "—"}</td>
+                  ))}
                 <td>{fmtNum(totals.origCases, 1) || "—"}</td>
                 <td>{fmtInt(totals.origUnits) || "—"}</td>
-                {dcs.map((d) => (
-                  <td key={`tf-${d.num}`}>{fmtInt(totals.finalPerDc[d.num]) || "—"}</td>
-                ))}
+                {!singleDc &&
+                  dcs.map((d) => (
+                    <td key={`tf-${d.num}`}>{fmtInt(totals.finalPerDc[d.num]) || "—"}</td>
+                  ))}
                 <td>{fmtInt(totals.finalCases) || "—"}</td>
                 <td>{fmtInt(totals.finalUnits) || "—"}</td>
                 <td></td>
@@ -703,18 +763,8 @@ export default function SierraRouting({ brand }: { brand: BrandKey }) {
               {/* total units — per-DC × 10 (matches Excel row 18: =C17*10). */}
               <tr className="summary-row">
                 <td colSpan={2} style={{ textAlign: "right" }}>total units</td>
-                {dcs.map((d) => (
-                  <td key={`tu-o-${d.num}`}>
-                    {fmtInt(summary.origTotalUnitsPerDc[d.num]) || "—"}
-                  </td>
-                ))}
-                <td colSpan={2}></td>
-                {dcs.map((d) => (
-                  <td key={`tu-f-${d.num}`}>
-                    {fmtInt(summary.finalTotalUnitsPerDc[d.num]) || "—"}
-                  </td>
-                ))}
-                <td colSpan={2}></td>
+                {sumCells("tu-o", (n) => fmtInt(summary.origTotalUnitsPerDc[n]) || "—")}
+                {sumCells("tu-f", (n) => fmtInt(summary.finalTotalUnitsPerDc[n]) || "—")}
                 <td colSpan={dcs.length + 1}></td>
                 <td></td>
               </tr>
@@ -723,18 +773,8 @@ export default function SierraRouting({ brand }: { brand: BrandKey }) {
                   Matches Excel row 19: =C17*8+90 / =D17*8+90+30. */}
               <tr className="summary-row">
                 <td colSpan={2} style={{ textAlign: "right" }}>WEIGHT</td>
-                {dcs.map((d) => (
-                  <td key={`w-o-${d.num}`}>
-                    {fmtInt(summary.origWeightPerDc[d.num]) || "—"}
-                  </td>
-                ))}
-                <td colSpan={2}></td>
-                {dcs.map((d) => (
-                  <td key={`w-f-${d.num}`}>
-                    {fmtInt(summary.finalWeightPerDc[d.num]) || "—"}
-                  </td>
-                ))}
-                <td colSpan={2}></td>
+                {sumCells("w-o", (n) => fmtInt(summary.origWeightPerDc[n]) || "—")}
+                {sumCells("w-f", (n) => fmtInt(summary.finalWeightPerDc[n]) || "—")}
                 <td colSpan={dcs.length + 1}></td>
                 <td></td>
               </tr>
@@ -742,18 +782,8 @@ export default function SierraRouting({ brand }: { brand: BrandKey }) {
               {/* PALLET — 1 per DC once that DC has data, otherwise blank. */}
               <tr className="summary-row">
                 <td colSpan={2} style={{ textAlign: "right" }}>PALLET</td>
-                {dcs.map((d) => (
-                  <td key={`p-o-${d.num}`}>
-                    {summary.origPalletPerDc[d.num] || "—"}
-                  </td>
-                ))}
-                <td colSpan={2}></td>
-                {dcs.map((d) => (
-                  <td key={`p-f-${d.num}`}>
-                    {summary.finalPalletPerDc[d.num] || "—"}
-                  </td>
-                ))}
-                <td colSpan={2}></td>
+                {sumCells("p-o", (n) => String(summary.origPalletPerDc[n] || "—"))}
+                {sumCells("p-f", (n) => String(summary.finalPalletPerDc[n] || "—"))}
                 <td colSpan={dcs.length + 1}></td>
                 <td></td>
               </tr>
@@ -763,18 +793,8 @@ export default function SierraRouting({ brand }: { brand: BrandKey }) {
                   here we surface the ceiling so it's there at a glance). */}
               <tr className="summary-row">
                 <td colSpan={2} style={{ textAlign: "right" }}>WEIGHT ROUND UP</td>
-                {dcs.map((d) => (
-                  <td key={`wr-o-${d.num}`}>
-                    {fmtInt(Math.ceil(summary.origWeightPerDc[d.num])) || "—"}
-                  </td>
-                ))}
-                <td colSpan={2}></td>
-                {dcs.map((d) => (
-                  <td key={`wr-f-${d.num}`}>
-                    {fmtInt(Math.ceil(summary.finalWeightPerDc[d.num])) || "—"}
-                  </td>
-                ))}
-                <td colSpan={2}></td>
+                {sumCells("wr-o", (n) => fmtInt(Math.ceil(summary.origWeightPerDc[n])) || "—")}
+                {sumCells("wr-f", (n) => fmtInt(Math.ceil(summary.finalWeightPerDc[n])) || "—")}
                 <td colSpan={dcs.length + 1}></td>
                 <td></td>
               </tr>
