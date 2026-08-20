@@ -4,7 +4,7 @@
 // functions must produce byte-identical numbers to the original tool.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { C23, C25, B23, B25, B27, B29, SKUS_20CT, SKU_WEIGHTS, SKU_PRICES } from "./constants";
+import { C23, C25, B23, B25, B27, B29, SKUS_20CT, SKU_WEIGHTS, SKU_PRICES, skuBase } from "./constants";
 import type {
   ShipmentState,
   QtyMap,
@@ -71,7 +71,9 @@ export function computeSummary(st: ShipmentState): SummaryData | null {
   const qty = st.qty;
   const dcData: DCSummary[] = st.dcs.map((dc) => {
     const cases20 = st.products
-      .filter((p) => SKUS_20CT.includes(p))
+      // skuBase() is a no-op for plain `QT13`; it only rescues `QT13L`-style
+      // codes, which would otherwise fall into the 10ct bucket and skew pallets.
+      .filter((p) => SKUS_20CT.includes(skuBase(p)))
       .reduce((sum, p) => sum + ((qty[p] && qty[p][dc.num]) || 0), 0);
     const units20 = cases20 * 10;
     const casesAll = st.products.reduce(
@@ -90,7 +92,11 @@ export function computeSummary(st: ShipmentState): SummaryData | null {
 
     const netWt = st.products.reduce((sum, p) => {
       const cases = ((qty[p] && qty[p][dc.num]) || 0) * 10;
-      const wt = (st.skuMeta && st.skuMeta[p] && st.skuMeta[p].weight) || SKU_WEIGHTS[p] || 0;
+      const wt =
+        (st.skuMeta && st.skuMeta[p] && st.skuMeta[p].weight) ||
+        SKU_WEIGHTS[p] ||
+        SKU_WEIGHTS[skuBase(p)] ||
+        0;
       return sum + wt * cases;
     }, 0);
 
@@ -99,7 +105,11 @@ export function computeSummary(st: ShipmentState): SummaryData | null {
 
     const value = st.products.reduce((sum, p) => {
       const cases = (qty[p] && qty[p][dc.num]) || 0;
-      const price = (st.skuMeta && st.skuMeta[p] && st.skuMeta[p].price) || SKU_PRICES[p] || 0;
+      const price =
+        (st.skuMeta && st.skuMeta[p] && st.skuMeta[p].price) ||
+        SKU_PRICES[p] ||
+        SKU_PRICES[skuBase(p)] ||
+        0;
       return sum + price * cases * 10;
     }, 0);
 
@@ -123,7 +133,17 @@ export function computeSummary(st: ShipmentState): SummaryData | null {
     tot.value += d.value;
   });
 
-  return { dcData, tot, dcs: st.dcs };
+  // A SKU with no weight anywhere still counts toward cases and pallets but
+  // contributes 0 lb / $0 — so the summary looks plausible while Net Wt, Gross
+  // Wt and Value are quietly short. Report them instead of swallowing them.
+  const unknownSkus = st.products.filter(
+    (p) =>
+      !(st.skuMeta && st.skuMeta[p] && st.skuMeta[p].weight) &&
+      !SKU_WEIGHTS[p] &&
+      !SKU_WEIGHTS[skuBase(p)]
+  );
+
+  return { dcData, tot, dcs: st.dcs, unknownSkus };
 }
 
 /**

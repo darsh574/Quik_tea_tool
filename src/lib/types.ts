@@ -265,6 +265,12 @@ export interface SummaryData {
   dcData: DCSummary[];
   tot: SummaryTotals;
   dcs: DC[];
+  /**
+   * SKUs with no weight in skuMeta, SKU_WEIGHTS, or their base code. They add
+   * 0 lb / $0 to the totals. Optional so summaries saved before this existed
+   * still deserialize from `po_records.summary`.
+   */
+  unknownSkus?: string[];
 }
 
 /** A single customer-order row in the BOL orders tables. */

@@ -26,9 +26,26 @@ const ROWS: Row[] = [
 ];
 
 export function SummaryTable({ summary }: { summary: SummaryData }) {
-  const { dcData, tot } = summary;
+  const { dcData, tot, unknownSkus } = summary;
 
   return (
+    <>
+    {unknownSkus && unknownSkus.length > 0 && (
+      <p
+        style={{
+          margin: "0 0 10px",
+          padding: "8px 12px",
+          borderRadius: 6,
+          background: "#fff4e5",
+          border: "1px solid #f0b429",
+          color: "#7a4d00",
+          fontSize: 13,
+        }}
+      >
+        ⚠ No weight or price on file for <strong>{unknownSkus.join(", ")}</strong> — these
+        add 0 lb and $0, so Net Wt, Gross Wt and Value below are understated.
+      </p>
+    )}
     <table>
       <thead>
         <tr>
@@ -70,5 +87,6 @@ export function SummaryTable({ summary }: { summary: SummaryData }) {
         })}
       </tbody>
     </table>
+    </>
   );
 }

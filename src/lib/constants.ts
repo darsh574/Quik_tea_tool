@@ -245,6 +245,21 @@ export const SKU_PRICES: Record<string, number> = {
   QT13: 3.75, QT16: 3.75, QT19: 3.75, QT22: 3.75,
 };
 
+/**
+ * Strip trailing letters off a SKU code: `QT26L` → `QT26`.
+ *
+ * Hand-typed SKUs in the routing table sometimes carry a trailing letter that
+ * carries no meaning (per the brand — `QT26L` IS `QT26`). Without this, the
+ * weight/price lookups above miss, fall through to 0, and silently deflate
+ * Net Wt / Gross Wt / Value while the case and pallet counts still look right.
+ *
+ * Used only as a FALLBACK — an exact match in SKU_WEIGHTS / SKU_PRICES /
+ * SKUS_20CT always wins, so a real `QT26L` entry added later takes precedence.
+ */
+export function skuBase(sku: string): string {
+  return /^QT\d+[A-Z]+$/.test(sku) ? sku.replace(/[A-Z]+$/, "") : sku;
+}
+
 // ── Carrier Address Book ──
 export interface CarrierBookEntry {
   carrier: string;
