@@ -224,20 +224,11 @@ export const MAX_LAYERS_PER_PALLET = 72;
 export const PALLET_WEIGHT_LB = 80;
 
 // Excel cell aliases used by the Shipment Summary (match HG Master cells exactly)
-// ── Pallet stacking — the brand's "Routing logic file.xlsx" (docs/), 2026-09-05 ──
-// Per DC, SKUs with the same ti + case height share a stack: layers =
-// ROUNDUP(cases ÷ ti), stack height = layers × case height (in); pallets =
-// ROUNDUP(Σ stack heights ÷ usable height). ti and height come from the SKU
-// Master (pallet_ti, case_height_in) — the numbers in the sheet were a demo.
-// (The prototype's ÷8×6 / ÷11×4 / ÷72 formula was this with rounded heights —
-// see backups/2026-09-05-sheet-pallet-logic/.)
-export interface PalletType {
-  ti: number; // cases per layer (pallet TI)
-  height: number; // case height, inches
-}
-export const PALLET_MAX_HEIGHT = 72; // inches, loaded pallet
-export const PALLET_BASE_HEIGHT = 6; // inches, the wooden pallet itself
-export const PALLET_USABLE_HEIGHT = PALLET_MAX_HEIGHT - PALLET_BASE_HEIGHT; // 66
+export const C23 = 8; // cases per pallet layer — 20ct pack
+export const C25 = 11; // cases per pallet layer — 10ct pack
+export const B23 = 6; // layers per pallet — 20ct pack
+export const B25 = 4; // layers per pallet — 10ct pack
+export const B27 = 72; // max total layers per pallet
 export const B29 = 80; // pallet weight in lbs
 
 export const SKUS_20CT = ["QT13", "QT16", "QT19", "QT22"];

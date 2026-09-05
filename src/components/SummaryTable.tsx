@@ -26,7 +26,7 @@ const ROWS: Row[] = [
 ];
 
 export function SummaryTable({ summary }: { summary: SummaryData }) {
-  const { dcData, tot, unknownSkus } = summary;
+  const { dcData, tot, unknownSkus, noPalletDims } = summary;
 
   return (
     <>
@@ -44,6 +44,23 @@ export function SummaryTable({ summary }: { summary: SummaryData }) {
       >
         ⚠ No weight or price on file for <strong>{unknownSkus.join(", ")}</strong> — these
         add 0 lb and $0, so Net Wt, Gross Wt and Value below are understated.
+      </p>
+    )}
+    {noPalletDims && noPalletDims.length > 0 && (
+      <p
+        style={{
+          margin: "0 0 10px",
+          padding: "8px 12px",
+          borderRadius: 6,
+          background: "#fff4e5",
+          border: "1px solid #f0b429",
+          color: "#7a4d00",
+          fontSize: 13,
+        }}
+      >
+        ⚠ No pallet TI / case height in the SKU Master for{" "}
+        <strong>{noPalletDims.join(", ")}</strong> — these add 0&quot; of stack, so # Pallets,
+        Pallet Wt and Gross Wt below are understated. Fill them in on the SKU Master tab.
       </p>
     )}
     <table>

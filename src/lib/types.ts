@@ -271,6 +271,8 @@ export interface SummaryData {
    * still deserialize from `po_records.summary`.
    */
   unknownSkus?: string[];
+  /** SKUs with no pallet_ti / case_height_in in the SKU Master — 0 in of stack. */
+  noPalletDims?: string[];
 }
 
 /** A single customer-order row in the BOL orders tables. */

@@ -82,12 +82,11 @@ for (const [suffixed, plain] of [["QT54L", "QT54"], ["QT27L", "QT27"]]) {
 // Rows shaped like sku_master (June 2026 values). QT26L is a "20 Count x 10"
 // SKU there — 8×11 pallets like QT13, not QT26's 11×15.
 const master = new Map([
-  ["QT13", { item_code: "QT13", sachet_count: 20, case_pack: 10, case_gross_wt_lb: 13.117489, pallet_ti: 8, case_height_in: 5.905511811023622 }],
-  ["QT12", { item_code: "QT12", sachet_count: 10, case_pack: 10, case_gross_wt_lb: 7.165015, pallet_ti: 11, case_height_in: 4.330708661417323 }],
-  ["QT26L", { item_code: "QT26L", sachet_count: 20, case_pack: 10, case_gross_wt_lb: 9.259404, pallet_ti: 8, case_height_in: 5.905511811023622 }],
-  ["QT13C", { item_code: "QT13C", sachet_count: 20, case_pack: 10, case_gross_wt_lb: 11.464024, pallet_ti: 8, case_height_in: 5.905511811023622 }],
-  ["QT11", { item_code: "QT11", sachet_count: 2, case_pack: 20, case_gross_wt_lb: 3.1195373, pallet_ti: 20, case_height_in: 5.118110236220472 }],
-  ["QT44", { item_code: "QT44", group_name: "Tea Bags", case_pack: 12, case_gross_wt_lb: 5.6879196, pallet_ti: 16, case_height_in: 11.535433070866143 }],
+  ["QT13", { item_code: "QT13", sachet_count: 20, case_pack: 10, case_gross_wt_lb: 13.117489 }],
+  ["QT12", { item_code: "QT12", sachet_count: 10, case_pack: 10, case_gross_wt_lb: 7.165015 }],
+  ["QT26L", { item_code: "QT26L", sachet_count: 20, case_pack: 10, case_gross_wt_lb: 9.259404 }],
+  ["QT13C", { item_code: "QT13C", sachet_count: 20, case_pack: 10, case_gross_wt_lb: 11.464024 }],
+  ["QT11", { item_code: "QT11", sachet_count: 2, case_pack: 20, case_gross_wt_lb: 3.1195373 }],
 ]);
 {
   // Hard-coded SKUs: byte-identical with or without the master.
@@ -101,7 +100,7 @@ const master = new Map([
   const s = computeSummary(state(["QT13C"], { QT13C: { "882": 16 } }), master);
   assert.equal(s.tot.cases20, 16, "QT13C is a 20 Count SKU per the master");
   assert.equal(s.tot.cases10, 0);
-  assert.equal(s.tot.pallets, 1, "16 cases ÷ 8 = 2 layers × 5.9 in = 11.8 in → 1 pallet");
+  assert.equal(s.tot.pallets, Math.ceil(((16 / 8) * 6) / 72));
   assert.ok(Math.abs(s.tot.netWt - 160 * 0.11464024) < 1e-9);
   assert.equal(s.tot.value, 600, "20ct price rule: $3.75/unit");
   assert.deepEqual(s.unknownSkus, []);
@@ -130,49 +129,6 @@ const master = new Map([
   const m = computeSummary(st, master);
   assert.equal(m.tot.netWt, 10);
   assert.equal(m.tot.value, 99.9);
-}
-
-// ── Pallets: "Routing logic file.xlsx" (docs/) logic, SKU Master dimensions ──
-// Per DC, SKUs with the same pallet_ti + case_height_in share a stack:
-// ROUNDUP(cases ÷ ti) layers × height, summed, ÷ 66 usable inches, rounded up.
-{
-  // 100 × QT13 (8/layer × 5.9055 in): 13 layers = 76.8 in → 2 pallets.
-  assert.equal(computeSummary(state(["QT13"], { QT13: { "882": 100 } }), master).tot.pallets, 2);
-  // 88 × QT13: 11 layers = 65.0 in → 1 pallet; 96: 12 layers = 70.9 in → 2.
-  assert.equal(computeSummary(state(["QT13"], { QT13: { "882": 88 } }), master).tot.pallets, 1);
-  assert.equal(computeSummary(state(["QT13"], { QT13: { "882": 96 } }), master).tot.pallets, 2);
-
-  // Same ti + height → same stack: 60 QT13 + 4 QT13C = 64 → 8 layers = 47.2 in → 1 pallet
-  // (per-SKU rounding would be 8 + 1 = 9 layers; still 1 here, but shared is the rule).
-  const same = computeSummary(
-    state(["QT13", "QT13C"], { QT13: { "882": 60 }, QT13C: { "882": 4 } }),
-    master,
-  );
-  assert.equal(same.tot.pallets, 1, "SKUs with identical master dims share layers");
-  // Different dims DON'T share a stack: 88 QT13 (65.0 in) + 11 QT12 (4.3 in) → 69.3 in.
-  const apart = computeSummary(
-    state(["QT13", "QT12"], { QT13: { "882": 88 }, QT12: { "882": 11 } }),
-    master,
-  );
-  assert.equal(apart.tot.pallets, 2, "65.0 in + 4.3 in = 69.3 in → 2 pallets");
-
-  // Each DC is rounded on its own, then summed.
-  const dc2 = { num: "883", code: "HG883", name: "HomeGoods", street: "", city: "" };
-  const two = computeSummary(
-    { ...state(["QT12"], { QT12: { "882": 5, "883": 5 } }), dcs: [dc, dc2] },
-    master,
-  );
-  assert.equal(two.tot.pallets, 2, "1 pallet per DC, even though 10 cases would fit on one");
-  assert.equal(two.tot.palletWt, 2 * B29, "pallet weight hangs off the count");
-  assert.deepEqual(two.noPalletDims, []);
-
-  // No dimensions in the master → 0 in of stack, reported — never guessed.
-  const nodims = computeSummary(state(["QT13", "QT15"], { QT13: { "882": 8 }, QT15: { "882": 500 } }), master);
-  assert.deepEqual(nodims.noPalletDims, ["QT15"], "QT15 is not in the mock master");
-  assert.equal(nodims.tot.pallets, 1, "only QT13's 1 layer counts; QT15 adds nothing");
-  const none = computeSummary(state(["QT15"], { QT15: { "882": 500 } }));
-  assert.equal(none.tot.pallets, 1, "no master at all: min 1 pallet, flagged");
-  assert.deepEqual(none.noPalletDims, ["QT15"]);
 }
 
 console.log("✓ SKU lookup check passed");

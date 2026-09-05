@@ -4,16 +4,7 @@
 // functions must produce byte-identical numbers to the original tool.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import {
-  B29,
-  PALLET_USABLE_HEIGHT,
-  SKUS_20CT,
-  SKU_WEIGHTS,
-  SKU_PRICES,
-  SKU_PRICE_BY_COUNT,
-  skuBase,
-} from "./constants";
-import type { PalletType } from "./constants";
+import { C23, C25, B23, B25, B27, B29, SKUS_20CT, SKU_WEIGHTS, SKU_PRICES, SKU_PRICE_BY_COUNT, skuBase } from "./constants";
 import type {
   ShipmentState,
   QtyMap,
@@ -89,14 +80,6 @@ function is20ct(p: string, master?: SkuMasterMap): boolean {
   return SKUS_20CT.includes(skuBase(p));
 }
 
-/** Stacking dimensions from the SKU Master; undefined when it has none. */
-function palletType(p: string, master?: SkuMasterMap): PalletType | undefined {
-  const m = master?.get(p);
-  return m && m.pallet_ti && m.case_height_in
-    ? { ti: m.pallet_ti, height: m.case_height_in }
-    : undefined;
-}
-
 /** lb per unit. Master rule: case gross wt (lb) / 100 — what SKU_WEIGHTS holds. */
 function skuWeight(p: string, st: ShipmentState, master?: SkuMasterMap): number {
   const m = master?.get(p);
@@ -144,27 +127,9 @@ export function computeSummary(st: ShipmentState, master?: SkuMasterMap): Summar
     const units10 = cases10 * 10;
     const totalCases = casesAll;
 
-    // "Routing logic file.xlsx": SKUs with the same ti + case height share
-    // layers — layers = ROUNDUP(cases ÷ ti), stack height = layers × height;
-    // pallets = ROUNDUP(Σ stack heights ÷ 66 usable inches), at least 1.
-    // A SKU with no dimensions in the master adds 0 height (reported below).
     let pallets = 0;
     if (totalCases > 0) {
-      const byType = new Map<string, { t: PalletType; cases: number }>();
-      st.products.forEach((p) => {
-        const t = palletType(p, master);
-        if (!t) return;
-        const key = `${t.ti}|${t.height}`;
-        const g = byType.get(key) || { t, cases: 0 };
-        g.cases += (qty[p] && qty[p][dc.num]) || 0;
-        byType.set(key, g);
-      });
-      let stackHeight = 0;
-      byType.forEach(({ t, cases }) => {
-        stackHeight += Math.ceil(cases / t.ti) * t.height;
-      });
-      // floating-point guard, same as computeFinalQty
-      pallets = Math.ceil(Math.round((stackHeight / PALLET_USABLE_HEIGHT) * 1e10) / 1e10);
+      pallets = Math.ceil(((cases20 / C23) * B23 + (cases10 / C25) * B25) / B27);
       pallets = Math.max(1, pallets);
     }
 
@@ -205,11 +170,8 @@ export function computeSummary(st: ShipmentState, master?: SkuMasterMap): Summar
   // contributes 0 lb / $0 — so the summary looks plausible while Net Wt, Gross
   // Wt and Value are quietly short. Report them instead of swallowing them.
   const unknownSkus = st.products.filter((p) => !skuWeight(p, st, master));
-  // No pallet_ti / case_height_in in the SKU Master → 0 in to every stack, so
-  // # Pallets (and Pallet Wt / Gross Wt) are understated. Report, don't guess.
-  const noPalletDims = st.products.filter((p) => !palletType(p, master));
 
-  return { dcData, tot, dcs: st.dcs, unknownSkus, noPalletDims };
+  return { dcData, tot, dcs: st.dcs, unknownSkus };
 }
 
 /**

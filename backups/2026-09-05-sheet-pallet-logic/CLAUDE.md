@@ -21,9 +21,8 @@ and Excel sheets. Do not "simplify", "fix", or "tidy" any number, rounding step,
 or constant in:
 
 - `src/lib/constants.ts` — `SPEC`, the 3 DC masters, `BRAND_CONFIG`,
-  `DEFAULT_SKU_META`, `CARRIER_BOOK`, pallet stacking (`PALLET_TYPES`,
-  `PALLET_USABLE_HEIGHT=66`, `B29=80`), `SKU_WEIGHTS`, `SKU_PRICES`, default
-  brand state, `DEFAULT_P1/P2`
+  `DEFAULT_SKU_META`, `CARRIER_BOOK`, pallet constants (`C23=8`, `B27=72`,
+  `B29=80`, …), `SKU_WEIGHTS`, `SKU_PRICES`, default brand state, `DEFAULT_P1/P2`
 - `src/lib/formulas.ts` — `computeFinalQty`, `computeSummary`, `buildLabelElements`
 - `src/lib/excel.ts` — the ÷10 import + brand auto-detection
 - `src/lib/labelPdf.ts` — the 6"×4" label PDF spec
@@ -37,18 +36,6 @@ Quirks that are intentional (do not "correct" them): `QT54` final total is `40`
 
 If a calculation genuinely looks wrong, surface it to the user — do not silently
 change it.
-
-**One deliberate departure from the prototype (2026-09-05):** the HG / TJX /
-Marshalls **pallet count** follows the brand's `docs/Routing logic file.xlsx`,
-not `platform_updt.html`. Per DC, SKUs with the same ti + case height share a
-stack: `ROUNDUP(cases ÷ ti)` layers × case height, summed, `÷ 66` usable
-inches (72" pallet − 6" base), rounded up, min 1. **ti and height come from
-the SKU Master** (`pallet_ti`, `case_height_in`) — the numbers inside the
-sheet were a demo, only its logic applies. A SKU with no dimensions in the
-master adds 0" and is flagged in the summary (`noPalletDims`), never guessed.
-The prototype's `÷8×6 + ÷11×4, ÷72` was this with rounded heights. SKUs
-outside the hard-coded tables also get their 10/20ct type, weight and price
-from the master (`sachet_count`, `case_gross_wt_lb`).
 
 ## Backups before risky changes
 
@@ -64,9 +51,6 @@ Current backups:
 
 - `backups/2026-09-05-sku-master-lookup/` — before `computeSummary` started
   reading the SKU Master for unknown SKUs (pallet bucket / weight / price).
-- `backups/2026-09-05-sheet-pallet-logic/` — before the pallet count switched
-  from the prototype's `÷8×6 + ÷11×4, ÷72` formula to the
-  `docs/Routing logic file.xlsx` stacking logic.
 
 ## Commands
 
