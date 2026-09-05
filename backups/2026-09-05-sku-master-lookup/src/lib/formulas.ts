@@ -4,7 +4,7 @@
 // functions must produce byte-identical numbers to the original tool.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { C23, C25, B23, B25, B27, B29, SKUS_20CT, SKU_WEIGHTS, SKU_PRICES, SKU_PRICE_BY_COUNT, skuBase } from "./constants";
+import { C23, C25, B23, B25, B27, B29, SKUS_20CT, SKU_WEIGHTS, SKU_PRICES, skuBase } from "./constants";
 import type {
   ShipmentState,
   QtyMap,
@@ -61,62 +61,19 @@ export function computeFinalQty(st: ShipmentState): QtyMap {
   return result;
 }
 
-/** SKU Master rows keyed by upper-cased item_code (see skuMasterMap()). */
-export type SkuMasterMap = ReadonlyMap<string, SkuMasterRow>;
-
-// ── SKU lookups used by computeSummary ──
-// Resolution order, every one of them: hard-coded exact entry → SKU Master row
-// → skuBase() fallback. The hard-coded tables never lose to the master, so the
-// 19 SKUs they cover produce the exact numbers they always did; the master only
-// fills in SKUs the tables don't know (hand-added codes like QT31L, QT13C).
-
-/** 20ct bucket? Master rule: `sachet_count === 20` ("20 Count x 10"). */
-function is20ct(p: string, master?: SkuMasterMap): boolean {
-  if (p in SKU_WEIGHTS) return SKUS_20CT.includes(p);
-  const count = master?.get(p)?.sachet_count;
-  if (count != null) return count === 20;
-  // skuBase() is a no-op for plain `QT13`; it only rescues `QT13L`-style
-  // codes, which would otherwise fall into the 10ct bucket and skew pallets.
-  return SKUS_20CT.includes(skuBase(p));
-}
-
-/** lb per unit. Master rule: case gross wt (lb) / 100 — what SKU_WEIGHTS holds. */
-function skuWeight(p: string, st: ShipmentState, master?: SkuMasterMap): number {
-  const m = master?.get(p);
-  return (
-    (st.skuMeta && st.skuMeta[p] && st.skuMeta[p].weight) ||
-    SKU_WEIGHTS[p] ||
-    (m && m.case_gross_wt_lb ? m.case_gross_wt_lb / 100 : 0) ||
-    SKU_WEIGHTS[skuBase(p)] ||
-    0
-  );
-}
-
-/** $ per unit. Master has no price column, so it goes by sachet count. */
-function skuPrice(p: string, st: ShipmentState, master?: SkuMasterMap): number {
-  const count = master?.get(p)?.sachet_count;
-  return (
-    (st.skuMeta && st.skuMeta[p] && st.skuMeta[p].price) ||
-    SKU_PRICES[p] ||
-    (count != null ? SKU_PRICE_BY_COUNT[count] : 0) ||
-    SKU_PRICES[skuBase(p)] ||
-    0
-  );
-}
-
 /**
  * Compute the full Shipment Summary (per-DC rows + totals) from a brand state.
  * Mirrors getSummaryData() + computeAndBuild() from the original tool.
- * `master` (the SKU Master catalogue) is optional — without it, SKUs outside
- * the hard-coded tables fall back to the skuBase() guess exactly as before.
  */
-export function computeSummary(st: ShipmentState, master?: SkuMasterMap): SummaryData | null {
+export function computeSummary(st: ShipmentState): SummaryData | null {
   if (!st.products.length || !st.dcs.length) return null;
 
   const qty = st.qty;
   const dcData: DCSummary[] = st.dcs.map((dc) => {
     const cases20 = st.products
-      .filter((p) => is20ct(p, master))
+      // skuBase() is a no-op for plain `QT13`; it only rescues `QT13L`-style
+      // codes, which would otherwise fall into the 10ct bucket and skew pallets.
+      .filter((p) => SKUS_20CT.includes(skuBase(p)))
       .reduce((sum, p) => sum + ((qty[p] && qty[p][dc.num]) || 0), 0);
     const units20 = cases20 * 10;
     const casesAll = st.products.reduce(
@@ -135,7 +92,12 @@ export function computeSummary(st: ShipmentState, master?: SkuMasterMap): Summar
 
     const netWt = st.products.reduce((sum, p) => {
       const cases = ((qty[p] && qty[p][dc.num]) || 0) * 10;
-      return sum + skuWeight(p, st, master) * cases;
+      const wt =
+        (st.skuMeta && st.skuMeta[p] && st.skuMeta[p].weight) ||
+        SKU_WEIGHTS[p] ||
+        SKU_WEIGHTS[skuBase(p)] ||
+        0;
+      return sum + wt * cases;
     }, 0);
 
     const palletWt = pallets * B29;
@@ -143,7 +105,12 @@ export function computeSummary(st: ShipmentState, master?: SkuMasterMap): Summar
 
     const value = st.products.reduce((sum, p) => {
       const cases = (qty[p] && qty[p][dc.num]) || 0;
-      return sum + skuPrice(p, st, master) * cases * 10;
+      const price =
+        (st.skuMeta && st.skuMeta[p] && st.skuMeta[p].price) ||
+        SKU_PRICES[p] ||
+        SKU_PRICES[skuBase(p)] ||
+        0;
+      return sum + price * cases * 10;
     }, 0);
 
     return { dc, units20, cases20, units10, cases10, totalCases, pallets, palletWt, netWt, grossWt, value };
@@ -169,7 +136,12 @@ export function computeSummary(st: ShipmentState, master?: SkuMasterMap): Summar
   // A SKU with no weight anywhere still counts toward cases and pallets but
   // contributes 0 lb / $0 — so the summary looks plausible while Net Wt, Gross
   // Wt and Value are quietly short. Report them instead of swallowing them.
-  const unknownSkus = st.products.filter((p) => !skuWeight(p, st, master));
+  const unknownSkus = st.products.filter(
+    (p) =>
+      !(st.skuMeta && st.skuMeta[p] && st.skuMeta[p].weight) &&
+      !SKU_WEIGHTS[p] &&
+      !SKU_WEIGHTS[skuBase(p)]
+  );
 
   return { dcData, tot, dcs: st.dcs, unknownSkus };
 }

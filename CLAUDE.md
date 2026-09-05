@@ -37,6 +37,21 @@ Quirks that are intentional (do not "correct" them): `QT54` final total is `40`
 If a calculation genuinely looks wrong, surface it to the user — do not silently
 change it.
 
+## Backups before risky changes
+
+`backups/<date>-<change>/` holds pre-change copies of the files a change
+touched, mirrored at their repo paths, plus a `README.md` with the exact revert
+command. When a change to the shipment math, lookups or persistence goes wrong,
+**check `backups/` first** — restore from there (or `git revert`) rather than
+hand-patching. When you make such a change, add a new folder the same way.
+`backups/` is excluded in `tsconfig.json` so the old copies don't break
+`npm run typecheck`.
+
+Current backups:
+
+- `backups/2026-09-05-sku-master-lookup/` — before `computeSummary` started
+  reading the SKU Master for unknown SKUs (pallet bucket / weight / price).
+
 ## Commands
 
 ```bash

@@ -4,10 +4,8 @@
 // Column shape mirrors the team's "SKU MASTER.xlsx" exactly.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { SkuMasterRow } from "@/lib/types";
-import type { SkuMasterMap } from "@/lib/formulas";
 
 /**
  * Editing the SKU Master is restricted to admins. Operators have read-only
@@ -99,33 +97,6 @@ export async function listSkuMaster(): Promise<SkuMasterRow[]> {
     .order("item_code", { ascending: true });
   if (error) throw new Error(error.message);
   return (data ?? []) as SkuMasterRow[];
-}
-
-/** Rows → map keyed by upper-cased item_code, the shape computeSummary() reads. */
-export function skuMasterMap(rows: SkuMasterRow[]): SkuMasterMap {
-  const m = new Map<string, SkuMasterRow>();
-  rows.forEach((s) => m.set((s.item_code || "").toUpperCase(), s));
-  return m;
-}
-
-/**
- * The SKU Master as a code → row map, loaded once on mount. A load failure
- * degrades to an empty map — callers fall back to the hard-coded SKU tables.
- */
-export function useSkuMasterMap(): SkuMasterMap {
-  const [rows, setRows] = useState<SkuMasterRow[]>([]);
-  useEffect(() => {
-    let cancelled = false;
-    listSkuMaster()
-      .then((r) => {
-        if (!cancelled) setRows(r);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-  return useMemo(() => skuMasterMap(rows), [rows]);
 }
 
 /** Insert or update one SKU. Keyed by lower(item_code) — case-insensitive. */

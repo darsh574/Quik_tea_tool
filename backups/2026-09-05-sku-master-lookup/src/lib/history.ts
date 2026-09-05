@@ -7,7 +7,6 @@
 import { createClient } from "@/lib/supabase/client";
 import { computeSummary, poDigits } from "@/lib/formulas";
 import { defaultBolForm } from "@/lib/bolHelpers";
-import { listSkuMaster, skuMasterMap } from "@/lib/skuMaster";
 import { defaultLabelFormat } from "@/lib/labelFormat";
 import { sierraToShipmentState } from "@/lib/sierraAdapter";
 import type {
@@ -41,10 +40,7 @@ export async function savePoRecord({ brand, shipmentState, format, bol }: SaveIn
     throw new Error("No PO number set — fill the PO on the Routing tab or the BOL Shipment PO #.");
   }
 
-  // Same SKU Master lookup the Routing tab uses, so the saved summary matches
-  // the one on screen. Best effort — the hard-coded tables cover a failed load.
-  const master = await listSkuMaster().then(skuMasterMap).catch(() => undefined);
-  const summary = computeSummary(shipmentState, master);
+  const summary = computeSummary(shipmentState);
   const labelTotal = shipmentState.products.reduce(
     (s, p) =>
       s +

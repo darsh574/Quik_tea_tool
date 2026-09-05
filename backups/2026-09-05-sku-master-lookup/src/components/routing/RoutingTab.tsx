@@ -6,7 +6,6 @@ import { parseShipmentSheet } from "@/lib/excel";
 import { computeSummary } from "@/lib/formulas";
 import { BRAND_CONFIG, ROUTING_READY_BRANDS } from "@/lib/constants";
 import { savePoRecord } from "@/lib/history";
-import { useSkuMasterMap } from "@/lib/skuMaster";
 import { SummaryTable } from "@/components/SummaryTable";
 import SimplePoRouting from "@/components/routing/SimplePoRouting";
 import SierraRouting from "@/components/routing/SierraRouting";
@@ -54,8 +53,7 @@ export default function RoutingTab() {
   const [submitting, setSubmitting] = useState(false);
   const [submitMsg, setSubmitMsg] = useState<{ kind: "ok" | "err"; msg: string } | null>(null);
 
-  const skuMaster = useSkuMasterMap();
-  const summary = useMemo(() => computeSummary(st, skuMaster), [st, skuMaster]);
+  const summary = useMemo(() => computeSummary(st), [st]);
 
   async function handleSubmitRouting() {
     setSubmitting(true);

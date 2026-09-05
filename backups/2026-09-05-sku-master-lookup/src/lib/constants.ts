@@ -250,9 +250,6 @@ export const SKU_PRICES: Record<string, number> = {
   // 10-ct SKUs — same $/unit as every other 10-ct entry above.
   QT25: 1.95, QT31: 1.95, QT39: 1.95, QT57: 1.95, QT58: 1.95,
 };
-// $/unit by sachet count — the rule every SKU_PRICES entry above follows. Used
-// for SKUs that are only in the SKU Master (which has no price column).
-export const SKU_PRICE_BY_COUNT: Record<number, number> = { 10: 1.95, 20: 3.75 };
 
 /**
  * Strip trailing letters off a SKU code: `QT26L` → `QT26`.

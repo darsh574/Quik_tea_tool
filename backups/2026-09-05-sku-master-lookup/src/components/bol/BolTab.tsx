@@ -17,10 +17,10 @@ import {
   saveSierraPoRecord,
 } from "@/lib/history";
 import { BRAND_CONFIG, SIERRA_WEIGHT_PER_UNIT, SIERRA_WEIGHT_BASES } from "@/lib/constants";
-import { useSkuMasterMap } from "@/lib/skuMaster";
+import { listSkuMaster } from "@/lib/skuMaster";
 import { OrdersTable } from "@/components/bol/OrdersTable";
 import PoPicker from "@/components/PoPicker";
-import type { BolForm, BrandKey } from "@/lib/types";
+import type { BolForm, BrandKey, SkuMasterRow } from "@/lib/types";
 
 /** Brands that use the line-item (Burlington / DD Discount) routing flow. */
 const SIMPLE_PO_BRANDS: BrandKey[] = ["burlington", "ddDiscount"];
@@ -61,7 +61,25 @@ export default function BolTab() {
   // SKU Master catalogue — needed so the Burlington/DD Discount BOL sync can
   // compute case heights (and thus Total Pallets) the same way the routing tab
   // does. Loaded once on mount; failures degrade gracefully to an empty map.
-  const skuByCode = useSkuMasterMap();
+  const [skus, setSkus] = useState<SkuMasterRow[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    listSkuMaster()
+      .then((rows) => {
+        if (!cancelled) setSkus(rows);
+      })
+      .catch(() => {
+        /* non-fatal: totals fall back to a 0 pallet preview */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const skuByCode = useMemo(() => {
+    const m = new Map<string, SkuMasterRow>();
+    skus.forEach((s) => m.set((s.item_code || "").toUpperCase(), s));
+    return m;
+  }, [skus]);
 
   const [mode, setMode] = useState<"editable" | "static">("editable");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -315,7 +333,7 @@ export default function BolTab() {
     }
 
     // ── HG / TJX / Marshalls: existing per-DC summary flow.
-    const summary = computeSummary(st, skuByCode);
+    const summary = computeSummary(st);
     if (!summary) {
       flashToast("Add products and DCs on the Routing tab first.");
       return;
