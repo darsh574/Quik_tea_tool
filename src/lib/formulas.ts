@@ -296,6 +296,7 @@ export function buildLabelElementsSierra(
   q: number,
   cartonNum: number,
   f: LabelFormat,
+  includeDept = false,
 ): LabelElement[] {
   const SP = SPEC;
   const x = SP.X;
@@ -330,7 +331,7 @@ export function buildLabelElementsSierra(
   els.push({ isDivider: true, y: divY });
   y = divY + SP.DIV_TO_PO;
 
-  els.push({ text: `PO # ${dc.num}${po}`, x, y, fs: FN, fw: "700" });
+  els.push({ text: `PO # ${dc.num}${po}${includeDept && f.dept.trim() ? ` ${f.dept.trim()}` : ""}`, x, y, fs: FN, fw: "700" });
   y += SP.LG;
   els.push({ text: `${f.vendorLabel} ${prod}`, x, y, fs: FN, fw: "700" });
   els.push({ text: `${f.unitsLabel} ${f.unitsVal}`, x: xR, y, fs: FN, fw: "700" });

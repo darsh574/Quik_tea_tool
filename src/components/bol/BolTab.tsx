@@ -16,7 +16,7 @@ import {
   saveSimplePoRecord,
   saveSierraPoRecord,
 } from "@/lib/history";
-import { BRAND_CONFIG, SIERRA_WEIGHT_PER_UNIT, SIERRA_WEIGHT_BASES } from "@/lib/constants";
+import { getBrandConfig, isMatrixBrand, SIERRA_WEIGHT_PER_UNIT, SIERRA_WEIGHT_BASES } from "@/lib/constants";
 import { useSkuMasterMap } from "@/lib/skuMaster";
 import { OrdersTable } from "@/components/bol/OrdersTable";
 import PoPicker from "@/components/PoPicker";
@@ -25,7 +25,6 @@ import type { BolForm, BrandKey } from "@/lib/types";
 /** Brands that use the line-item (Burlington / DD Discount) routing flow. */
 const SIMPLE_PO_BRANDS: BrandKey[] = ["burlington", "ddDiscount"];
 /** Brands using the Sierra matrix routing flow. */
-const SIERRA_BRANDS: BrandKey[] = ["sierra", "lotless"];
 
 /**
  * Text input bound to a BolForm key.
@@ -106,7 +105,7 @@ export default function BolTab() {
             bol,
             format,
           });
-        } else if (SIERRA_BRANDS.includes(activeBrand) && st.sierra) {
+        } else if (isMatrixBrand(activeBrand) && st.sierra) {
           await saveSierraPoRecord({
             brand: activeBrand,
             sierra: st.sierra,
@@ -271,9 +270,9 @@ export default function BolTab() {
     }
 
     // ── Sierra: matrix routing → pulls confident BOL fields from sierra. ──
-    if (SIERRA_BRANDS.includes(activeBrand)) {
+    if (isMatrixBrand(activeBrand)) {
       const s = st.sierra;
-      const brandLabel = BRAND_CONFIG[activeBrand]?.label ?? activeBrand;
+      const brandLabel = getBrandConfig(activeBrand)?.label ?? activeBrand;
       if (!s || (s.poNumber ?? "").trim() === "") {
         flashToast(`Fill the ${brandLabel} routing (PO + final cases) first.`);
         return;
@@ -365,7 +364,7 @@ export default function BolTab() {
               bol,
               format,
             })
-          : SIERRA_BRANDS.includes(activeBrand) && st.sierra
+          : isMatrixBrand(activeBrand) && st.sierra
           ? await saveSierraPoRecord({
               brand: activeBrand,
               sierra: st.sierra,
@@ -410,7 +409,7 @@ export default function BolTab() {
             bol,
             format,
           });
-        } else if (SIERRA_BRANDS.includes(activeBrand) && st.sierra) {
+        } else if (isMatrixBrand(activeBrand) && st.sierra) {
           await saveSierraPoRecord({
             brand: activeBrand,
             sierra: st.sierra,

@@ -352,3 +352,22 @@ export const DEFAULT_P2: BolOrder[] = [
   { order: "16127047", pkgs: 38, weight: 334, pallet: true, info: "MAR PO 07 062707 1 Pallet", wms: "WMS S009823956" },
   { order: "16127055", pkgs: 17, weight: 202, pallet: true, info: "MAR PO 08 062707 1 Pallet", wms: "WMS S009823813" },
 ];
+
+/** Custom keys carry the name so saved POs work on other browsers too. */
+export function isCustomBrand(brand: BrandKey): brand is `custom:${string}` {
+  return brand.startsWith("custom:");
+}
+export function isMatrixBrand(brand: BrandKey): boolean {
+  return brand === "sierra" || brand === "lotless" || isCustomBrand(brand);
+}
+export function getBrandConfig(brand: BrandKey): BrandConfigEntry {
+  if (!isCustomBrand(brand)) return BRAND_CONFIG[brand];
+  const label = brand.slice(7);
+  return { dcMaster: {}, label, defaultDCName: `${label} Distribution Center`,
+    pdfPrefix: label.replace(/[^a-z0-9_-]/gi, "_") || "CUSTOM" };
+}
+export function defaultCustomShipment(brand: BrandKey): ShipmentState {
+  return { products: [], dcs: [], qty: {}, qtyFinal: {}, qtyFinalTotal: {},
+    po: "", from: "Quikfoods Inc", skuMeta: {},
+    sierra: defaultSierraShipment(getBrandConfig(brand).defaultDCName, LOTLESS_DCS) };
+}

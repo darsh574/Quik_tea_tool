@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useShipmentStore } from "@/store/useShipmentStore";
 import { searchPoRecords } from "@/lib/history";
-import { BRAND_CONFIG } from "@/lib/constants";
+import { getBrandConfig } from "@/lib/constants";
 import type { PoRecord } from "@/lib/types";
 
 /**
@@ -54,7 +54,7 @@ export default function PoPicker({ context }: { context: "labels" | "bol" }) {
     ? records.filter(
         (r) =>
           r.po_number.toLowerCase().includes(query.toLowerCase()) ||
-          (BRAND_CONFIG[r.brand]?.label ?? r.brand).toLowerCase().includes(query.toLowerCase()),
+          (getBrandConfig(r.brand)?.label ?? r.brand).toLowerCase().includes(query.toLowerCase()),
       )
     : records;
 
@@ -194,7 +194,7 @@ export default function PoPicker({ context }: { context: "labels" | "bol" }) {
             Load a saved PO
             {currentPo && (
               <span className="qt-popicker-current">
-                Current: {currentPo} · {BRAND_CONFIG[activeBrand]?.label ?? activeBrand}
+                Current: {currentPo} · {getBrandConfig(activeBrand)?.label ?? activeBrand}
               </span>
             )}
           </div>
@@ -224,7 +224,7 @@ export default function PoPicker({ context }: { context: "labels" | "bol" }) {
           {filtered.map((r) => {
             const id = r.id || r.po_number;
             const date = r.updated_at ? new Date(r.updated_at).toLocaleDateString() : "—";
-            const brandLabel = BRAND_CONFIG[r.brand]?.label ?? r.brand;
+            const brandLabel = getBrandConfig(r.brand)?.label ?? r.brand;
             return (
               <option key={id} value={id}>
                 PO {r.po_number} · {brandLabel} · {date}

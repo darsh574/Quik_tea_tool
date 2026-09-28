@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import { searchPoRecords, deletePoRecord } from "@/lib/history";
 import { useShipmentStore } from "@/store/useShipmentStore";
 import { useCurrentUser } from "@/components/UserContext";
-import { BRAND_CONFIG } from "@/lib/constants";
+import { getBrandConfig } from "@/lib/constants";
 import { generateLabelZip, downloadBlob } from "@/lib/labelPdf";
 import { buildBolPDF } from "@/lib/bolPdf";
 import {
@@ -60,7 +60,7 @@ export default function HistoryTab() {
     const id = rec.id;
     if (!id) return;
     const ok = window.confirm(
-      `Delete PO ${rec.po_number} (${BRAND_CONFIG[rec.brand]?.label ?? rec.brand})?\n\nThis removes the routing + label + BOL snapshot permanently. It cannot be undone.`,
+      `Delete PO ${rec.po_number} (${getBrandConfig(rec.brand)?.label ?? rec.brand})?\n\nThis removes the routing + label + BOL snapshot permanently. It cannot be undone.`,
     );
     if (!ok) return;
     setDeletingId(id);
@@ -379,7 +379,7 @@ function RecordRow({
     <>
       <tr style={{ cursor: "pointer" }} onClick={onToggle}>
         <td style={{ fontWeight: 700, color: "var(--navy)" }}>{rec.po_number}</td>
-        <td>{BRAND_CONFIG[rec.brand]?.label ?? rec.brand}</td>
+        <td>{getBrandConfig(rec.brand)?.label ?? rec.brand}</td>
         <td style={{ fontSize: 12 }}>{generatedBy}</td>
         <td style={{ fontSize: 12 }}>{generatedOn}</td>
         <td>{rec.label_total}</td>

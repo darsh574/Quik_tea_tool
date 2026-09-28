@@ -8,6 +8,10 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 export async function resolve(specifier, context, next) {
+  if (specifier.startsWith("@/")) {
+    const url = new URL(`../src/${specifier.slice(2)}.ts`, import.meta.url);
+    if (existsSync(fileURLToPath(url))) return next(url.href, context);
+  }
   if (specifier.startsWith(".") && !/\.[cm]?[jt]sx?$/.test(specifier)) {
     const candidate = `${specifier}.ts`;
     const url = new URL(candidate, context.parentURL);

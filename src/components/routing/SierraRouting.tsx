@@ -20,7 +20,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useShipmentStore } from "@/store/useShipmentStore";
 import {
-  BRAND_CONFIG,
+  getBrandConfig, isCustomBrand,
   defaultSierraShipment,
   LOTLESS_DCS,
   newSierraLine,
@@ -61,14 +61,19 @@ function fmtInt(n: number): string {
 }
 
 export default function SierraRouting({ brand }: { brand: BrandKey }) {
-  const brandLabel = BRAND_CONFIG[brand]?.label ?? brand;
+  const brandLabel = getBrandConfig(brand)?.label ?? brand;
   /** Blank shipment for this brand — keeps the DC name brand-correct on reset. */
   const blankShipment = useCallback(
-    () =>
-      defaultSierraShipment(
-        BRAND_CONFIG[brand]?.defaultDCName,
-        brand === "lotless" ? LOTLESS_DCS : undefined,
-      ),
+    () => {
+      const current = useShipmentStore.getState().brandState[brand]?.sierra;
+      const blank = defaultSierraShipment(
+        getBrandConfig(brand).defaultDCName,
+        (brand === "lotless" || isCustomBrand(brand)) ? LOTLESS_DCS : undefined,
+      );
+      return isCustomBrand(brand) && current
+        ? { ...blank, from: current.from, dcs: current.dcs.map(dc => ({ ...dc })) }
+        : blank;
+    },
     [brand],
   );
 

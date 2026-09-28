@@ -8,10 +8,11 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import {
   makeDefaultBrandState,
-  BRAND_CONFIG,
+  getBrandConfig, isCustomBrand, defaultCustomShipment,
   defaultBurlingtonShipment,
   defaultSierraShipment,
   LOTLESS_DCS,
+  newSierraLine,
 } from "@/lib/constants";
 import { defaultBolForm } from "@/lib/bolHelpers";
 import { defaultLabelFormat } from "@/lib/labelFormat";
@@ -38,6 +39,11 @@ interface ShipmentStore {
   activeTab: TabKey;
   brandState: Record<BrandKey, ShipmentState>;
   format: LabelFormat;
+  builtInFormat: LabelFormat;
+  brandFormats: Partial<Record<BrandKey, LabelFormat>>;
+  addSection: (name: string, format: LabelFormat, details?: {
+    from: string; to: string; street: string; city: string; poNumber: string; product: string;
+  }) => void;
   bol: BolForm;
   /**
    * The brand the current `bol.st_*` fields were last initialised for.
@@ -101,6 +107,27 @@ export const useShipmentStore = create<ShipmentStore>()(
       activeTab: "home",
       brandState: makeDefaultBrandState(),
       format: defaultFormat(),
+      brandFormats: {},
+      builtInFormat: defaultFormat(),
+      addSection: (name, format, details) => set((s) => {
+        const label = name.trim().replace(/\s+/g, " ");
+        if (!label || label.length > 60) throw new Error("Enter a section name of 1-60 characters.");
+        if (Object.keys(s.brandState).some((b) => getBrandConfig(b as BrandKey).label.toLowerCase() === label.toLowerCase())) throw new Error("A section with that name already exists.");
+        const brand: BrandKey = `custom:${label}`;
+        const shipment = defaultCustomShipment(brand);
+        if (details && shipment.sierra) {
+          shipment.sierra.from = details.from.trim() || "Quikfoods Inc";
+          shipment.sierra.poNumber = details.poNumber.trim();
+          shipment.sierra.dcs[0] = { ...shipment.sierra.dcs[0],
+            name: details.to.trim() || getBrandConfig(brand).defaultDCName,
+            street: details.street.trim(), city: details.city.trim() };
+          if (details.product.trim()) shipment.sierra.lines = [newSierraLine(details.product.trim().toUpperCase())];
+        }
+        return { activeBrand: brand, bolBrand: brand, format: { ...format },
+          builtInFormat: isCustomBrand(s.activeBrand) ? s.builtInFormat : s.format,
+          brandFormats: { ...s.brandFormats, [s.activeBrand]: s.format, [brand]: { ...format } },
+          brandState: { ...s.brandState, [brand]: shipment } };
+      }),
       bol: defaultBolForm(),
       bolBrand: "homegoods",
       dataVersion: 0,
@@ -110,7 +137,11 @@ export const useShipmentStore = create<ShipmentStore>()(
       // alone. Burlington / DD Discount Ship-To + routing totals are applied
       // exclusively when the user clicks "↺ Sync from Summary" on the BOL
       // tab, so nothing overwrites in-progress BOL edits silently.
-      setActiveBrand: (brand) => set({ activeBrand: brand, bolBrand: brand }),
+      setActiveBrand: (brand) => set((s) => ({ activeBrand: brand, bolBrand: brand,
+        brandFormats: { ...s.brandFormats, [s.activeBrand]: s.format },
+        builtInFormat: isCustomBrand(s.activeBrand) ? s.builtInFormat : s.format,
+        format: brand === s.activeBrand || (!isCustomBrand(brand) && !isCustomBrand(s.activeBrand)) ? s.format : isCustomBrand(brand) ? s.brandFormats[brand] ?? { ...defaultFormat(), dept: "" } : s.builtInFormat,
+      })),
       setActiveTab: (tab) => set({ activeTab: tab }),
 
       current: () => get().brandState[get().activeBrand],
@@ -163,8 +194,8 @@ export const useShipmentStore = create<ShipmentStore>()(
         set((s) => {
           const st = s.brandState[s.activeBrand];
           if (st.dcs.find((d) => d.num === dc.num)) return s;
-          const master = BRAND_CONFIG[s.activeBrand].dcMaster[dc.num];
-          const defaultName = BRAND_CONFIG[s.activeBrand].defaultDCName;
+          const master = getBrandConfig(s.activeBrand).dcMaster[dc.num];
+          const defaultName = getBrandConfig(s.activeBrand).defaultDCName;
           const resolved: DC = master
             ? { num: dc.num, ...master }
             : {
@@ -227,7 +258,7 @@ export const useShipmentStore = create<ShipmentStore>()(
         set((s) => {
           const b = brand || s.activeBrand;
           const fresh = makeDefaultBrandState();
-          return { brandState: { ...s.brandState, [b]: fresh[b] } };
+          return { brandState: { ...s.brandState, [b]: isCustomBrand(b) ? defaultCustomShipment(b) : fresh[b] } };
         }),
 
       setBurlington: (patch) =>
@@ -254,7 +285,9 @@ export const useShipmentStore = create<ShipmentStore>()(
           };
         }),
 
-      setFormat: (patch) => set((s) => ({ format: { ...s.format, ...patch } })),
+      setFormat: (patch) => set((s) => ({ format: { ...s.format, ...patch },
+        brandFormats: { ...s.brandFormats, [s.activeBrand]: { ...s.format, ...patch } },
+      })),
 
       setBol: (patch) => set((s) => ({ bol: { ...s.bol, ...patch } })),
 
@@ -262,6 +295,8 @@ export const useShipmentStore = create<ShipmentStore>()(
 
       loadRecord: (rec) =>
         set((s) => ({
+          builtInFormat: isCustomBrand(rec.brand) ? (isCustomBrand(s.activeBrand) ? s.builtInFormat : s.format) : { ...defaultFormat(), ...rec.label_format },
+          brandFormats: { ...s.brandFormats, [s.activeBrand]: s.format, [rec.brand]: { ...defaultFormat(), ...rec.label_format } },
           activeBrand: rec.brand,
           bolBrand: rec.brand,
           brandState: { ...s.brandState, [rec.brand]: rec.shipment_state },
@@ -341,7 +376,7 @@ export const useShipmentStore = create<ShipmentStore>()(
           // DCs, so replace them (per-DC quantities keyed by the old nums go
           // with them — Lotless POs are re-entered against the single DC).
           p.brandState.lotless.sierra = defaultSierraShipment(
-            BRAND_CONFIG.lotless.defaultDCName,
+            getBrandConfig("lotless").defaultDCName,
             LOTLESS_DCS,
           );
         }

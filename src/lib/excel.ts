@@ -5,7 +5,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as XLSX from "xlsx";
-import { BRAND_CONFIG } from "./constants";
+import { getBrandConfig } from "./constants";
 import type { BrandKey, DC, QtyMap, SkuMeta } from "./types";
 
 export interface ParsedSheet {
@@ -52,8 +52,8 @@ export function parseShipmentSheet(data: ArrayBuffer, activeBrand: BrandKey): Pa
   const rows = XLSX.utils.sheet_to_json<SheetRow>(ws, { header: 1, defval: "", raw: true });
 
   // ── All 3 brands use the same Excel layout: DC# in col 5, SKU in col 0 ──
-  const dcMaster = BRAND_CONFIG[activeBrand].dcMaster;
-  const defaultDCName = BRAND_CONFIG[activeBrand].defaultDCName;
+  const dcMaster = getBrandConfig(activeBrand).dcMaster;
+  const defaultDCName = getBrandConfig(activeBrand).defaultDCName;
 
   const DC_COLS = [5, 6, 7, 8, 9, 10, 11];
   const skuCol = 0;

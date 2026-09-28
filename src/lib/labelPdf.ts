@@ -6,14 +6,13 @@
 
 import { jsPDF } from "jspdf";
 import JSZip from "jszip";
-import { SPEC, BRAND_CONFIG } from "./constants";
+import { SPEC, getBrandConfig, isMatrixBrand, isCustomBrand } from "./constants";
 import { poDigits, round2 } from "./formulas";
 import type { BrandKey, ShipmentState, LabelFormat, SkuMasterRow } from "./types";
 
 /** Brands that use the DD Discount label template (different from HG/TJX/MAR). */
 const DD_LABEL_BRANDS: BrandKey[] = ["ddDiscount"];
 /** Brands that use the Sierra label template (HG-style with format tweaks). */
-const SIERRA_LABEL_BRANDS: BrandKey[] = ["sierra", "lotless"];
 
 /** Truncate text with an ellipsis so it never overflows maxW (jsPDF measure). */
 function safeText(doc: jsPDF, text: string, x: number, y: number, maxW?: number): void {
@@ -64,7 +63,7 @@ export async function generateLabelZip(
 ): Promise<LabelZipResult> {
   const po = (st.po || "").trim() || "PO";
   const from = (st.from || "").trim() || "Quikfoods Inc";
-  const pdfPrefix = BRAND_CONFIG[activeBrand].pdfPrefix;
+  const pdfPrefix = getBrandConfig(activeBrand).pdfPrefix;
 
   // Extract trailing digits from PO: "50 631004" → "631004"
   const poDigitsLocal = poDigits(po);
@@ -90,7 +89,7 @@ export async function generateLabelZip(
       const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: [PW, PH] });
 
       const useDdLayout = DD_LABEL_BRANDS.includes(activeBrand);
-      const useSierraLayout = SIERRA_LABEL_BRANDS.includes(activeBrand);
+      const useSierraLayout = isMatrixBrand(activeBrand);
       const sku = useDdLayout
         ? skuLookup?.get((prod || "").toUpperCase().trim())
         : undefined;
@@ -140,7 +139,7 @@ export async function generateLabelZip(
           doc.setFont(SP.FONT, "bold");
           // PO format: dc.num concatenated directly with the PO (e.g.
           // "0860R986505"). No Dept # suffix on Sierra labels.
-          safeText(doc, `PO # ${dc.num}${po}`, x, y, SP.FULL_MAX_W);
+          safeText(doc, `PO # ${dc.num}${po}${isCustomBrand(activeBrand) && f.dept.trim() ? ` ${f.dept.trim()}` : ""}`, x, y, SP.FULL_MAX_W);
           y += SP.LG;
           safeText(doc, `${f.vendorLabel} ${prod}`, x, y, SP.LEFT_MAX_W);
           safeText(doc, `${f.unitsLabel} ${f.unitsVal}`, xR, y, SP.RIGHT_MAX_W);

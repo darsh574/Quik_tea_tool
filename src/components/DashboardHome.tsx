@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useShipmentStore } from "@/store/useShipmentStore";
 import { searchPoRecords } from "@/lib/history";
-import { BRAND_CONFIG } from "@/lib/constants";
+import { getBrandConfig } from "@/lib/constants";
 import type { BrandKey, PoRecord, TabKey } from "@/lib/types";
 
 const BRAND_KEYS: BrandKey[] = [
@@ -56,9 +56,9 @@ export default function DashboardHome({ username }: { username: string }) {
     records.forEach((r) => {
       counts[r.brand] = (counts[r.brand] ?? 0) + 1;
     });
-    const entries = BRAND_KEYS.map((b) => ({
+    const entries = Array.from(new Set([...BRAND_KEYS, ...records.map(r => r.brand)])).map((b) => ({
       brand: b,
-      label: BRAND_CONFIG[b]?.label ?? b,
+      label: getBrandConfig(b)?.label ?? b,
       count: counts[b] ?? 0,
     })).sort((a, b) => b.count - a.count);
     const maxCount = Math.max(1, ...entries.map((e) => e.count));
@@ -91,7 +91,7 @@ export default function DashboardHome({ username }: { username: string }) {
     return records.slice(0, 5).map((r) => {
       const ts = r.updated_at || r.created_at;
       const time = ts ? new Date(ts) : null;
-      const brandLabel = BRAND_CONFIG[r.brand]?.label ?? r.brand;
+      const brandLabel = getBrandConfig(r.brand)?.label ?? r.brand;
       const hasBol = !!r.bol_number;
       return {
         id: r.id || r.po_number,
@@ -727,7 +727,7 @@ export default function DashboardHome({ username }: { username: string }) {
                 return (
                   <tr key={r.id || r.po_number}>
                     <td className="po-cell">{r.po_number}</td>
-                    <td>{BRAND_CONFIG[r.brand]?.label ?? r.brand}</td>
+                    <td>{getBrandConfig(r.brand)?.label ?? r.brand}</td>
                     <td>{dcCount}</td>
                     <td>
                       <span className={`qt-pill ${status}`}>

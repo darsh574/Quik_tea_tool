@@ -56,7 +56,7 @@ export function sierraToShipmentState(
     qtyFinal: {},
     qtyFinalTotal: {},
     po: sierra.poNumber || "",
-    from: "Quikfoods Inc",
+    from: sierra.from ?? "Quikfoods Inc",
     skuMeta: {},
   };
 }

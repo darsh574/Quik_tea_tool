@@ -10,7 +10,8 @@ export type BrandKey =
   | "burlington"
   | "sierra"
   | "lotless"
-  | "ddDiscount";
+  | "ddDiscount"
+  | `custom:${string}`;
 
 /** The dashboard workflow tabs — switched client-side, no route navigation. */
 export type TabKey =
@@ -206,6 +207,7 @@ export interface SierraLine {
  *   per-DC cubic-feet totals derived from the SKU Master's case_cube_cuft.
  */
 export interface SierraShipment {
+  from?: string;
   poNumber: string;
   dcs: SierraDc[];
   lines: SierraLine[];

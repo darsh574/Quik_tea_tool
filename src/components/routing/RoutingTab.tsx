@@ -4,18 +4,19 @@ import { useMemo, useRef, useState } from "react";
 import { useShipmentStore } from "@/store/useShipmentStore";
 import { parseShipmentSheet } from "@/lib/excel";
 import { computeSummary } from "@/lib/formulas";
-import { BRAND_CONFIG, ROUTING_READY_BRANDS } from "@/lib/constants";
+import { getBrandConfig, isMatrixBrand, isCustomBrand, ROUTING_READY_BRANDS } from "@/lib/constants";
 import { savePoRecord } from "@/lib/history";
 import { useSkuMasterMap } from "@/lib/skuMaster";
 import { SummaryTable } from "@/components/SummaryTable";
 import SimplePoRouting from "@/components/routing/SimplePoRouting";
 import SierraRouting from "@/components/routing/SierraRouting";
+import CreateSection from "./CreateSection";
+import SectionSettings from "./SectionSettings";
 import type { BrandKey } from "@/lib/types";
 
 /** Brands that use the new line-item / Burlington-style routing format. */
 const SIMPLE_PO_BRANDS: BrandKey[] = ["burlington", "ddDiscount"];
 /** Brands that use the Sierra-style products-per-DC matrix. */
-const SIERRA_BRANDS: BrandKey[] = ["sierra", "lotless"];
 
 // Tab order matches the dashboard reference: 3 new brands first, then the
 // fully-wired HG / TJX / Marshalls.
@@ -30,6 +31,9 @@ const BRAND_TABS: BrandKey[] = [
 ];
 
 export default function RoutingTab() {
+  const brandState = useShipmentStore(s => s.brandState);
+  const [creatingSection, setCreatingSection] = useState(false);
+  const customBrands = (Object.keys(brandState) as BrandKey[]).filter(isCustomBrand);
   const activeBrand = useShipmentStore((s) => s.activeBrand);
   const setActiveBrand = useShipmentStore((s) => s.setActiveBrand);
   const st = useShipmentStore((s) => s.brandState[s.activeBrand]);
@@ -97,7 +101,7 @@ export default function RoutingTab() {
         skuMeta: parsed.skuMeta,
         sheetPO: parsed.sheetPO,
       });
-      const brandLabel = BRAND_CONFIG[activeBrand].label;
+      const brandLabel = getBrandConfig(activeBrand).label;
       const poWarning = !parsed.sheetPO
         ? " ⚠ PO number not found in sheet — enter it manually above."
         : "";
@@ -130,7 +134,7 @@ export default function RoutingTab() {
 
   const isReady = ROUTING_READY_BRANDS.includes(activeBrand);
   const isSimplePo = SIMPLE_PO_BRANDS.includes(activeBrand);
-  const isSierra = SIERRA_BRANDS.includes(activeBrand);
+  const isSierra = isMatrixBrand(activeBrand);
 
   return (
     <>
@@ -220,7 +224,8 @@ export default function RoutingTab() {
 
       {/* ── BRAND TABS ── */}
       <div className="qt-brand-tabs" role="tablist">
-        {BRAND_TABS.map((b) => {
+        <button type="button" className="qt-brand-tab" style={{ flex: "0 0 40px", minWidth: 40, fontSize: 22 }} aria-label="Add routing section" aria-expanded={creatingSection} title="Add routing section" onClick={() => setCreatingSection(v => !v)}>+</button>
+        {[...BRAND_TABS, ...customBrands].map((b) => {
           // A brand is "pending" only if NONE of the three routing flows
           // handle it (classic upload, simple-PO line items, or Sierra
           // matrix). Burlington / DD Discount / Sierra all now have their
@@ -228,7 +233,7 @@ export default function RoutingTab() {
           const hasRouting =
             ROUTING_READY_BRANDS.includes(b) ||
             SIMPLE_PO_BRANDS.includes(b) ||
-            SIERRA_BRANDS.includes(b);
+            isMatrixBrand(b);
           return (
             <button
               key={b}
@@ -241,17 +246,20 @@ export default function RoutingTab() {
               }
               onClick={() => setActiveBrand(b)}
             >
-              {BRAND_CONFIG[b].label}
+              {getBrandConfig(b).label}
             </button>
           );
         })}
       </div>
 
+      {creatingSection && <CreateSection onClose={() => setCreatingSection(false)} />}
+      {isCustomBrand(activeBrand) && <SectionSettings key={activeBrand} />}
+
       {/* Burlington / DD Discount — line-item PO table with SKU Master lookups */}
       {isSimplePo && <SimplePoRouting brand={activeBrand} />}
 
       {/* Sierra — products × DC matrix with cubic-feet calculations */}
-      {isSierra && <SierraRouting brand={activeBrand} />}
+      {isSierra && <SierraRouting key={activeBrand} brand={activeBrand} />}
 
       {!isReady && !isSimplePo && !isSierra && (
         <div className="qt-placeholder">
@@ -262,9 +270,9 @@ export default function RoutingTab() {
               <line x1="12" y1="16" x2="12.01" y2="16" />
             </svg>
           </div>
-          <h3>{BRAND_CONFIG[activeBrand].label} routing — coming soon</h3>
+          <h3>{getBrandConfig(activeBrand).label} routing — coming soon</h3>
           <p>
-            DC list and quantity rules for <strong>{BRAND_CONFIG[activeBrand].label}</strong> haven&apos;t
+            DC list and quantity rules for <strong>{getBrandConfig(activeBrand).label}</strong> haven&apos;t
             been wired up yet. Switch to <strong>HomeGoods</strong>, <strong>T.J. Maxx</strong>, or{" "}
             <strong>Marshalls</strong> above to use the existing routing flow, or share the DC master
             and we&apos;ll add this brand next.

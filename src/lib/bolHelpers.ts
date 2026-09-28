@@ -3,7 +3,7 @@
 // Ported VERBATIM from platform_updt.html (BOL defaults + syncBOLFromSummary).
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { BOL_PREFIX, BRAND_CONFIG, DEFAULT_P1, DEFAULT_P2 } from "./constants";
+import { BOL_PREFIX, getBrandConfig, DEFAULT_P1, DEFAULT_P2 } from "./constants";
 import type {
   BolForm,
   BolOrder,
@@ -85,7 +85,7 @@ export function syncBolFromBurlington(
     hu_weight: String(weightInt),
     commodity,
     // Row-2 commodity line: brand name + pallet count (was hard-coded "TJX Marshalls").
-    pallet_summary: `${BRAND_CONFIG[brand].label} - ${palletsInt}`,
+    pallet_summary: `${getBrandConfig(brand).label} - ${palletsInt}`,
     p1Orders,
     p2Orders: [],
   };
@@ -170,14 +170,14 @@ export function syncBolFromSierra(
         ? `${cases} Cases of Instant Chai Tea Latte premix powder`
         : "",
     // Row-2 commodity line: brand name + pallet count (was hard-coded "TJX Marshalls").
-    pallet_summary: `${BRAND_CONFIG[brand].label} - ${pallets}`,
+    pallet_summary: `${getBrandConfig(brand).label} - ${pallets}`,
     p1Orders,
     p2Orders: [],
   };
 
   if (dcsWithData.length === 1) {
     const dc = dcsWithData[0];
-    patch.st_name = dc.name || BRAND_CONFIG[brand].defaultDCName;
+    patch.st_name = dc.name || getBrandConfig(brand).defaultDCName;
     patch.st_location = dc.num;
     patch.st_address = dc.street || "";
     patch.st_csz = dc.city || "";
@@ -244,7 +244,7 @@ export function syncBolFromSummary(
   bolPO: string
 ): Partial<BolForm> {
   const { dcData, tot } = summary;
-  const prefix = BOL_PREFIX[activeBrand] || "TJM";
+  const prefix = BOL_PREFIX[activeBrand] || getBrandConfig(activeBrand).pdfPrefix;
   const po = (bolPO || "").trim();
 
   const p1Orders: BolOrder[] = dcData
@@ -270,7 +270,7 @@ export function syncBolFromSummary(
     hu_qty_p2: String(Math.round(tot.pallets)),
     commodity: Math.round(tot.totalCases) + " Cartons of Instant Chai Tea Latte",
     // Row-2 commodity line: brand name + pallet count (was hard-coded "TJX Marshalls").
-    pallet_summary: `${BRAND_CONFIG[activeBrand].label} - ${Math.round(tot.pallets)}`,
+    pallet_summary: `${getBrandConfig(activeBrand).label} - ${Math.round(tot.pallets)}`,
     p1Orders,
     p2Orders: [],
   };

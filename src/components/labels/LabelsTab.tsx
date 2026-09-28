@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useShipmentStore } from "@/store/useShipmentStore";
-import { BRAND_CONFIG, SPEC } from "@/lib/constants";
+import { getBrandConfig, isMatrixBrand, isCustomBrand, SPEC } from "@/lib/constants";
 import {
   buildLabelElements,
   buildLabelElementsDdDiscount,
@@ -39,7 +39,6 @@ const LABEL_DISABLED_BRANDS: BrandKey[] = ["burlington"];
 const ADAPTER_BRANDS: BrandKey[] = ["ddDiscount"];
 
 /** Brands whose routing data lives in `sierra` and needs Sierra's adapter. */
-const SIERRA_ADAPTER_BRANDS: BrandKey[] = ["sierra", "lotless"];
 
 export default function LabelsTab() {
   const activeBrand = useShipmentStore((s) => s.activeBrand);
@@ -61,11 +60,11 @@ export default function LabelsTab() {
     if (ADAPTER_BRANDS.includes(activeBrand) && st.burlington) {
       return burlingtonToShipmentState(
         st.burlington,
-        BRAND_CONFIG[activeBrand].defaultDCName,
+        getBrandConfig(activeBrand).defaultDCName,
         activeBrand,
       );
     }
-    if (SIERRA_ADAPTER_BRANDS.includes(activeBrand) && st.sierra) {
+    if (isMatrixBrand(activeBrand) && st.sierra) {
       return sierraToShipmentState(st.sierra);
     }
     return st;
@@ -73,7 +72,7 @@ export default function LabelsTab() {
 
   const labelsDisabled = LABEL_DISABLED_BRANDS.includes(activeBrand);
   const useDdLayout = ADAPTER_BRANDS.includes(activeBrand);
-  const useSierraLayout = SIERRA_ADAPTER_BRANDS.includes(activeBrand);
+  const useSierraLayout = isMatrixBrand(activeBrand);
 
   // ── SKU Master lookup (only needed for DD Discount labels). ──
   const [skus, setSkus] = useState<SkuMasterRow[]>([]);
@@ -95,10 +94,11 @@ export default function LabelsTab() {
 
   // ── Live preview — mirrors updatePreview() ──
   const previewEls = useMemo(() => {
-    const dcMaster = BRAND_CONFIG[activeBrand].dcMaster;
+    const dcMaster = getBrandConfig(activeBrand).dcMaster;
     const firstMasterKey = Object.keys(dcMaster)[0];
     const dc =
       effectiveSt.dcs[0] ||
+      (isCustomBrand(activeBrand) && st.sierra?.dcs[0] ? { ...st.sierra.dcs[0], name: st.sierra.dcs[0].name || getBrandConfig(activeBrand).defaultDCName, street: st.sierra.dcs[0].street || "", city: st.sierra.dcs[0].city || "" } : undefined) ||
       (firstMasterKey
         ? { num: firstMasterKey, ...dcMaster[firstMasterKey] }
         : {
@@ -108,11 +108,11 @@ export default function LabelsTab() {
             // brand mix-up on a DD's PO.
             num: "",
             code: "",
-            name: BRAND_CONFIG[activeBrand].defaultDCName,
+            name: getBrandConfig(activeBrand).defaultDCName,
             street: "",
             city: "",
           });
-    const prod = effectiveSt.products[0] || "QT15";
+    const prod = effectiveSt.products[0] || (isCustomBrand(activeBrand) ? st.sierra?.lines.find(line => line.product.trim())?.product : undefined) || "QT15";
     const q =
       effectiveSt.qty[prod] && effectiveSt.qty[prod][dc.num]
         ? effectiveSt.qty[prod][dc.num]
@@ -130,10 +130,10 @@ export default function LabelsTab() {
       return buildLabelElementsDdDiscount(from, dc, fullPo, prod, q, 1, sku);
     }
     if (useSierraLayout) {
-      return buildLabelElementsSierra(from, dc, effectiveSt.po, prod, q, 1, format);
+      return buildLabelElementsSierra(from, dc, effectiveSt.po, prod, q, 1, format, isCustomBrand(activeBrand));
     }
     return buildLabelElements(from, dc, effectiveSt.po, prod, q, 1, format);
-  }, [activeBrand, effectiveSt, format, useDdLayout, useSierraLayout, skuLookup]);
+  }, [activeBrand, effectiveSt, st.sierra, format, useDdLayout, useSierraLayout, skuLookup]);
 
   // ── Generate summary — mirrors updateSummary() ──
   const genSummary = useMemo(() => {
@@ -200,10 +200,10 @@ export default function LabelsTab() {
         <PoPicker context="labels" />
         <div className="card first last">
           <div className="section-title">
-            Label Generator — {BRAND_CONFIG[activeBrand].label}
+            Label Generator — {getBrandConfig(activeBrand).label}
           </div>
           <p className="hint" style={{ marginTop: 8 }}>
-            <strong>{BRAND_CONFIG[activeBrand].label}</strong> ships without
+            <strong>{getBrandConfig(activeBrand).label}</strong> ships without
             carton labels — only the Bill of Lading is required. Head to the{" "}
             <button
               onClick={() => setActiveTab("bol")}
@@ -307,7 +307,7 @@ export default function LabelsTab() {
       <div className="card last">
         <div className="section-title">Generate Labels</div>
         <div style={{ fontSize: 13, color: "#555", lineHeight: 1.9, marginBottom: 20 }}>
-          <strong>Brand:</strong> {BRAND_CONFIG[activeBrand].label}
+          <strong>Brand:</strong> {getBrandConfig(activeBrand).label}
           <br />
           <strong>PO:</strong> {st.po || "—"}
           <br />

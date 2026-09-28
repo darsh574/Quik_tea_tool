@@ -9,7 +9,7 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "check": "node --experimental-strip-types --import ./scripts/ts-register.mjs scripts/check-adapter.mjs && node --experimental-strip-types --import ./scripts/ts-register.mjs scripts/check-sku-lookup.mjs"
+    "check": "node --experimental-strip-types --import ./scripts/ts-register.mjs scripts/check-adapter.mjs && node --experimental-strip-types --import ./scripts/ts-register.mjs scripts/check-sku-lookup.mjs && node --experimental-strip-types --import ./scripts/ts-register.mjs scripts/check-custom-sections.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",

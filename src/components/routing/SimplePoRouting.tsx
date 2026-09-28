@@ -16,7 +16,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { listSkuMaster } from "@/lib/skuMaster";
 import {
-  BRAND_CONFIG,
+  getBrandConfig,
   defaultBurlingtonShipment,
   newBurlingtonLine,
 } from "@/lib/constants";
@@ -66,7 +66,7 @@ function fmtPct(n: number): string {
 }
 
 export default function SimplePoRouting({ brand }: { brand: BrandKey }) {
-  const brandLabel = BRAND_CONFIG[brand]?.label ?? brand;
+  const brandLabel = getBrandConfig(brand)?.label ?? brand;
 
   // ── Store-backed Burlington / DD Discount routing state ──
   // Single source of truth in the Zustand store so the BOL tab can sync from
