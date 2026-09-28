@@ -253,13 +253,13 @@ export default function RoutingTab() {
       </div>
 
       {creatingSection && <CreateSection onClose={() => setCreatingSection(false)} />}
-      {isCustomBrand(activeBrand) && <SectionSettings key={activeBrand} />}
+      {isCustomBrand(activeBrand) && <SectionSettings key={`settings:${activeBrand}`} />}
 
       {/* Burlington / DD Discount — line-item PO table with SKU Master lookups */}
       {isSimplePo && <SimplePoRouting brand={activeBrand} />}
 
       {/* Sierra — products × DC matrix with cubic-feet calculations */}
-      {isSierra && <SierraRouting key={activeBrand} brand={activeBrand} />}
+      {isSierra && <SierraRouting key={`routing:${activeBrand}`} brand={activeBrand} />}
 
       {!isReady && !isSimplePo && !isSierra && (
         <div className="qt-placeholder">

@@ -15,7 +15,7 @@ export default function SectionSettings() {
   const dc = shipment.dcs[0];
   return <>
     <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
-      <button type="button" className="btn-sm" style={{ color: "#a32929", borderColor: "#e2baba" }}
+      <button type="button" className="btn-sm" style={{ color: "#a32929", background: "#fff5f5", border: "1px solid #e2baba" }}
         onClick={() => {
           if (window.confirm(`Delete the "${getBrandConfig(brand).label}" routing section?\n\nThis removes its tab, unsaved routing data, and label settings from this browser. Saved POs remain in History; loading one will restore the section.`)) {
             deleteSection(brand);
