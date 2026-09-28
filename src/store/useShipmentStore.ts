@@ -44,6 +44,7 @@ interface ShipmentStore {
   addSection: (name: string, format: LabelFormat, details?: {
     from: string; to: string; street: string; city: string; poNumber: string; product: string;
   }) => void;
+  deleteSection: (brand: BrandKey) => void;
   bol: BolForm;
   /**
    * The brand the current `bol.st_*` fields were last initialised for.
@@ -127,6 +128,20 @@ export const useShipmentStore = create<ShipmentStore>()(
           builtInFormat: isCustomBrand(s.activeBrand) ? s.builtInFormat : s.format,
           brandFormats: { ...s.brandFormats, [s.activeBrand]: s.format, [brand]: { ...format } },
           brandState: { ...s.brandState, [brand]: shipment } };
+      }),
+      deleteSection: (brand) => set((s) => {
+        // Only user-created sections can be removed. Saved PO history is separate.
+        if (!isCustomBrand(brand) || !s.brandState[brand]) return s;
+        const brandState = { ...s.brandState };
+        const brandFormats = { ...s.brandFormats };
+        delete brandState[brand];
+        delete brandFormats[brand];
+        return {
+          brandState,
+          brandFormats,
+          ...(s.activeBrand === brand ? { activeBrand: "lotless" as const, format: s.builtInFormat } : {}),
+          ...(s.bolBrand === brand ? { bolBrand: "lotless" as const } : {}),
+        };
       }),
       bol: defaultBolForm(),
       bolBrand: "homegoods",
